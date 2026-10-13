@@ -24,6 +24,7 @@ import cn.android666.im.data.message.canRetract
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.data.sync.HistoryLoader
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -110,6 +111,35 @@ class ChatViewModel(
                 throw e
             } catch (e: Exception) {
                 log.error("引用失败：rowId={}", rowId, e)
+            }
+        }
+    }
+
+    /**
+     * 读取草稿（打开聊天页时恢复到输入框，开发计划 4.17）。
+     *
+     * @return 草稿；没有时为空字符串
+     */
+    suspend fun loadDraft(): String = try {
+        conversations.draft(conversationId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log.warn("读取草稿失败：{}", conversationId, e)
+        ""
+    }
+
+    /**
+     * 保存草稿（离开聊天页时）。离开页面后 ViewModel 可能随即销毁，保存不能随之取消，所以使用 [NonCancellable]。
+     *
+     * @param text 输入框内容
+     */
+    fun saveDraft(text: String) {
+        viewModelScope.launch(NonCancellable) {
+            try {
+                conversations.saveDraft(conversationId, kind, text)
+            } catch (e: Exception) {
+                log.warn("保存草稿失败：{}", conversationId, e)
             }
         }
     }

@@ -106,6 +106,29 @@ class ConversationRepositoryTest {
         assertThat(db.messageDao().get(CAROL, "m2")).isNotNull()
     }
 
+    /** 4.17 草稿：会话不存在时创建（列表中显示）；清空草稿；未登录时不报错 */
+    @Test
+    fun draft_saveAndClear() = runTest {
+        val (repository, db) = open()
+
+        repository.saveDraft(BOB, ConversationKind.SINGLE, "")
+        assertThat(db.conversationDao().get(BOB)).isNull()
+
+        repository.saveDraft(BOB, ConversationKind.SINGLE, "没写完")
+        assertThat(repository.draft(BOB)).isEqualTo("没写完")
+        assertThat(repository.observeConversations().first().single().draft).isEqualTo("没写完")
+        assertThat(db.conversationDao().get(BOB)!!.type).isEqualTo(ConversationEntity.TYPE_SINGLE)
+
+        repository.saveDraft(BOB, ConversationKind.SINGLE, "")
+        assertThat(repository.draft(BOB)).isEmpty()
+        // 没有消息也没有草稿：不再显示
+        assertThat(repository.observeConversations().first()).isEmpty()
+
+        holder!!.close()
+        repository.saveDraft(BOB, ConversationKind.SINGLE, "x")
+        assertThat(repository.draft(BOB)).isEmpty()
+    }
+
     /** 未登录：空列表、未读为 0 */
     @Test
     fun loggedOut_empty() = runTest {

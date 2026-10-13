@@ -60,6 +60,9 @@ class ChatActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityChatBinding
 
+    /** 正在把草稿恢复到输入框（此时的文字变化不是用户输入） */
+    private var restoringDraft = false
+
     /** 等待用户确认重发的消息 rowId（确认框在页面重建后仍在，但 Activity 字段会丢失，丢失时忽略结果） */
     private var pendingResendRowId: Long? = null
 
@@ -138,7 +141,20 @@ class ChatActivity : AppCompatActivity() {
 
         binding.input.doAfterTextChanged {
             binding.send.isEnabled = !it.isNullOrBlank()
-            viewModel.onInputChanged(it?.toString().orEmpty())
+            // 恢复草稿不是用户在输入，不发送"正在输入"
+            if (!restoringDraft) viewModel.onInputChanged(it?.toString().orEmpty())
+        }
+        // 第一次打开时恢复草稿（页面重建时输入框内容由系统恢复）
+        if (savedInstanceState == null) {
+            lifecycleScope.launch {
+                val draft = viewModel.loadDraft()
+                if (draft.isNotEmpty() && binding.input.text.isNullOrEmpty()) {
+                    restoringDraft = true
+                    binding.input.setText(draft)
+                    binding.input.setSelection(draft.length)
+                    restoringDraft = false
+                }
+            }
         }
         // 引用条
         binding.quoteClose.setOnClickListener { viewModel.cancelReply() }
@@ -194,8 +210,9 @@ class ChatActivity : AppCompatActivity() {
         viewModel.onVisible()
     }
 
-    /** 页面不可见 */
+    /** 页面不可见：保存草稿 */
     override fun onStop() {
+        viewModel.saveDraft(binding.input.text?.toString().orEmpty())
         viewModel.onHidden()
         super.onStop()
     }

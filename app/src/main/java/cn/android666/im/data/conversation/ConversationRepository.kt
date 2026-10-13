@@ -134,6 +134,34 @@ class ConversationRepository(private val databases: UserDatabaseHolder) {
     }
 
     /**
+     * 读取草稿（开发计划 4.17）。
+     *
+     * @param id 会话 ID
+     * @return 草稿；没有时为空字符串
+     */
+    suspend fun draft(id: String): String = databases.database.value?.conversationDao()?.get(id)?.draft.orEmpty()
+
+    /**
+     * 保存草稿（离开聊天页时）：会话不存在且草稿非空时创建会话（会话列表中显示"[草稿]"）。
+     *
+     * @param id 会话 ID
+     * @param kind 会话类型（会话不存在时使用）
+     * @param text 草稿；空字符串表示清除
+     */
+    suspend fun saveDraft(id: String, kind: ConversationKind, text: String) {
+        val db = databases.database.value ?: return
+        db.withTransaction {
+            val dao = db.conversationDao()
+            val existing = dao.get(id)
+            when {
+                existing == null && text.isEmpty() -> Unit
+                existing == null -> dao.upsert(ConversationEntity(id, kind.toEntityType(), draft = text))
+                existing.draft != text -> dao.setDraft(id, text)
+            }
+        }
+    }
+
+    /**
      * 清除会话的未读数（标记已读；向对方发送已读标记见开发计划 4.9）。
      *
      * @param id 会话 ID

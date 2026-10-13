@@ -84,6 +84,24 @@ class ChatActivityTest {
         }
     }
 
+    /** 4.17 草稿：打开时恢复，离开时保存 */
+    @Test
+    fun draft_restoredAndSaved() {
+        runBlocking {
+            app.container.conversationRepository.saveDraft(BOB, ConversationKind.SINGLE, "上次没写完")
+        }
+        val intent = ChatActivity.intent(app, BOB, ConversationKind.SINGLE)
+        ActivityScenario.launch<ChatActivity>(intent).use { scenario ->
+            lateinit var input: EditText
+            scenario.onActivity { input = it.findViewById(R.id.input) }
+            waitUntil { input.text.toString() == "上次没写完" }
+
+            scenario.onActivity { input.setText("改过的草稿") }
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            waitUntil { runBlocking { app.container.conversationRepository.draft(BOB) } == "改过的草稿" }
+        }
+    }
+
     /** 文件传输助手：标题为固定名称 */
     @Test
     fun selfConversation_title() {
