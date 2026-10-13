@@ -8,6 +8,7 @@ import cn.android666.im.core.xmpp.ConnectionState
 import cn.android666.im.core.xmpp.Credential
 import cn.android666.im.core.xmpp.DisconnectReason
 import cn.android666.im.core.xmpp.LoginResult
+import cn.android666.im.core.xmpp.OwnPresence
 import cn.android666.im.core.xmpp.RosterItem
 import cn.android666.im.core.xmpp.RosterSubscription
 import cn.android666.im.core.xmpp.ServerCapabilities
@@ -31,6 +32,7 @@ import org.jivesoftware.smack.ConnectionListener
 import org.jivesoftware.smack.ReconnectionManager
 import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smack.packet.Presence
+import org.jivesoftware.smack.packet.StandardExtensionElement
 import org.jivesoftware.smack.roster.Roster
 import org.jivesoftware.smack.roster.RosterEntry
 import org.jivesoftware.smack.roster.RosterListener
@@ -273,8 +275,20 @@ class SmackXmppClient(
         }
     }
 
-    override suspend fun sendInitialPresence() = request("发送初始 presence") { current ->
-        current.sendStanza(current.stanzaFactory.buildPresenceStanza().ofType(Presence.Type.available).build())
+    override suspend fun sendPresence(presence: OwnPresence) = request("发送 presence") { current ->
+        val builder = current.stanzaFactory.buildPresenceStanza().ofType(Presence.Type.available)
+        when (presence.show) {
+            "away" -> builder.setMode(Presence.Mode.away)
+            "dnd" -> builder.setMode(Presence.Mode.dnd)
+            "xa" -> builder.setMode(Presence.Mode.xa)
+            "chat" -> builder.setMode(Presence.Mode.chat)
+        }
+        presence.status?.let { builder.setStatus(it) }
+        presence.code?.let {
+            builder.addExtension(StandardExtensionElement.builder("state", OwnPresence.NAMESPACE).addAttribute("code", it).build())
+        }
+        current.sendStanza(builder.build())
+        log.info("已发送 presence：{}", presence)
     }
 
     override suspend fun <T> sendIq(request: IqRequest<T>): T = request("IQ ${request.namespace}#${request.elementName}") { current ->

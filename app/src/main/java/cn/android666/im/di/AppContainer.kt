@@ -13,6 +13,7 @@ import cn.android666.im.data.account.CredentialStore
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
 import cn.android666.im.data.org.OrgRepository
+import cn.android666.im.data.presence.PresenceRepository
 import cn.android666.im.data.org.OrgSyncStep
 import cn.android666.im.data.settings.AppSettingsStore
 import cn.android666.im.data.session.AppVisibilityHandler
@@ -133,16 +134,22 @@ class AppContainer(context: Context) {
                 CapabilitiesStep(xmppClient),
                 AccountStatusStep(xmppClient),
                 RosterStep(contactRepository),
-                InitialPresenceStep(xmppClient),
+                InitialPresenceStep(xmppClient) { presenceRepository.loadMyPresence() },
                 OrgSyncStep(orgRepository),
             ),
             scope = applicationScope,
-            onUserLoggedOut = userDatabaseHolder::close,
+            onUserLoggedOut = {
+                presenceRepository.onLogout()
+                userDatabaseHolder.close()
+            },
         )
     }
 
     /** 当前账号的用户数据库（按工号分库，登录时打开、退出登录时关闭） */
     val userDatabaseHolder: UserDatabaseHolder by lazy { UserDatabaseHolder(UserDatabaseHolder.create(appContext)) }
+
+    /** 在线状态：本人状态、同事状态查询（缓存 60 秒） */
+    val presenceRepository: PresenceRepository by lazy { PresenceRepository(xmppClient, userDatabaseHolder, clock) }
 
     /** 常用联系人（花名册） */
     val contactRepository: ContactRepository by lazy { ContactRepository(xmppClient, userDatabaseHolder, applicationScope) }

@@ -16,12 +16,13 @@ import cn.android666.im.databinding.ItemProfileFieldBinding
 import cn.android666.im.ui.base.appViewModels
 import cn.android666.im.ui.base.applySystemBarsPadding
 import cn.android666.im.ui.base.collectWhenStarted
+import cn.android666.im.ui.common.PresenceText
 import cn.android666.im.ui.widget.NameAvatar
 import com.google.android.material.color.MaterialColors
 
 /**
- * 同事资料卡（开发计划 3.18、3.19）：姓名、职位、工号、部门、联系方式；发消息（M4 单聊完成后接入）、打电话（系统拨号盘）、
- * 添加 / 移除常用联系人。
+ * 同事资料卡（开发计划 3.18 ~ 3.20）：姓名、职位、在线状态、工号、部门、联系方式；发消息（M4 单聊完成后接入）、
+ * 打电话（系统拨号盘）、添加 / 移除常用联系人。
  */
 class EmployeeProfileActivity : AppCompatActivity() {
 
@@ -29,7 +30,7 @@ class EmployeeProfileActivity : AppCompatActivity() {
 
     private val viewModel by appViewModels { container ->
         val self = container.sessionManager.currentUsername?.let { "$it@${container.serverConfig.domain}" }
-        EmployeeProfileViewModel(container.orgRepository, container.contactRepository, jid, self)
+        EmployeeProfileViewModel(container.orgRepository, container.contactRepository, container.presenceRepository, jid, self)
     }
 
     private lateinit var binding: ActivityEmployeeProfileBinding
@@ -49,6 +50,10 @@ class EmployeeProfileActivity : AppCompatActivity() {
         binding.toggleContact.setOnClickListener { viewModel.toggleContact() }
         collectWhenStarted(viewModel.state) { state -> state?.let(::render) }
         collectWhenStarted(viewModel.messages) { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
+        collectWhenStarted(viewModel.presence) { presence ->
+            binding.presence.isVisible = presence != null
+            presence?.let { binding.presence.text = PresenceText.describe(this, it, System.currentTimeMillis()) }
+        }
     }
 
     /**

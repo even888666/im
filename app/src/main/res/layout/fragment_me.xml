@@ -14,6 +14,43 @@
         android:textAppearance="?attr/textAppearanceTitleMedium"
         tools:text="工号：10001" />
 
+    <!-- 我的状态（开发计划 3.20），点击修改 -->
+    <LinearLayout
+        android:id="@+id/statusRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="?attr/selectableItemBackground"
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/me_status"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:gravity="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?android:attr/textColorSecondary"
+            tools:text="开会中 · 下午 3 点前在开会" />
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_chevron_right" />
+    </LinearLayout>
+
     <com.google.android.material.button.MaterialButton
         android:id="@+id/logoutButton"
         style="?attr/materialButtonOutlinedStyle"

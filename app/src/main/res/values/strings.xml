@@ -132,4 +132,19 @@
     <string name="profile_contact_added">已添加到常用联系人</string>
     <string name="profile_contact_removed">已从常用联系人中移除</string>
     <string name="contact_left">已离职</string>
+
+    <!-- 在线状态（开发计划 3.20） -->
+    <string name="presence_online">在线</string>
+    <string name="presence_busy">忙碌</string>
+    <string name="presence_meeting">开会中</string>
+    <string name="presence_business_trip">出差</string>
+    <string name="presence_away">离开</string>
+    <string name="presence_offline">离线</string>
+    <string name="presence_last_active">最后在线：%1$s</string>
+    <string name="presence_device_android">手机</string>
+    <string name="presence_device_pc">电脑</string>
+    <string name="presence_device_web">网页</string>
+    <string name="me_status">我的状态</string>
+    <string name="me_status_text_hint">状态说明（可选，如：下午 3 点前在开会）</string>
+    <string name="me_status_saved">状态已更新</string>
 </resources>

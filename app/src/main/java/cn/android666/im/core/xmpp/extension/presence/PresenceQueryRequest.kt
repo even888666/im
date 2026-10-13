@@ -37,7 +37,7 @@ data class PresenceQueryItem(
  *
  * @property jids 同事的 bare JID
  */
-class PresenceQueryRequest(private val jids: List<String>) :
+class PresenceQueryRequest(val jids: List<String>) :
     IqRequest<List<PresenceQueryItem>>(IqType.GET, ELEMENT, NAMESPACE) {
 
     init {

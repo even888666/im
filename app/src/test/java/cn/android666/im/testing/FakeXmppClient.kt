@@ -4,6 +4,7 @@ import cn.android666.im.core.xmpp.ConnectionState
 import cn.android666.im.core.xmpp.Credential
 import cn.android666.im.core.xmpp.DisconnectReason
 import cn.android666.im.core.xmpp.LoginResult
+import cn.android666.im.core.xmpp.OwnPresence
 import cn.android666.im.core.xmpp.ServerCapabilities
 import cn.android666.im.core.xmpp.ServerTime
 import cn.android666.im.core.xmpp.RosterItem
@@ -97,9 +98,13 @@ class FakeXmppClient : XmppClient {
         this.active = active
     }
 
-    override suspend fun sendInitialPresence() {
+    /** 最近一次发送的在线状态 */
+    var lastPresence: OwnPresence? = null
+
+    override suspend fun sendPresence(presence: OwnPresence) {
         calls += "presence"
         throwPendingError()
+        lastPresence = presence
     }
 
     /** 已发送的 IQ 请求 */
@@ -115,7 +120,12 @@ class FakeXmppClient : XmppClient {
         calls += "iq:${request.elementName}"
         sentIqs += request
         val xml = iqResponder(request)
-        return request.parseResult(xml?.let { XmlNode.parse(it) })
+        // 与 SmackXmppClient 一致：结果格式错误转为 InvalidResponse
+        return try {
+            request.parseResult(xml?.let { XmlNode.parse(it) })
+        } catch (e: IllegalArgumentException) {
+            throw XmppException.InvalidResponse(e.message ?: request.elementName, e)
+        }
     }
 
     /** 假的花名册（工号 JID → 条目） */

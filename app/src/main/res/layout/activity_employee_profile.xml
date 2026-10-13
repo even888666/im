@@ -62,6 +62,18 @@
                         android:textAppearance="?attr/textAppearanceBodyMedium"
                         android:textColor="?android:attr/textColorSecondary"
                         tools:text="Android工程师" />
+
+                    <!-- 在线状态（开发计划 3.20） -->
+                    <TextView
+                        android:id="@+id/presence"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorPrimary"
+                        android:visibility="gone"
+                        tools:text="开会中 · 手机 · 下午 3 点前在开会"
+                        tools:visibility="visible" />
                 </LinearLayout>
             </LinearLayout>
 

@@ -63,7 +63,7 @@ class RosterIT {
     ).also {
         clients += it
         it.login(Credential(ItServer.user(index), ItServer.testUserPassword))
-        it.sendInitialPresence()
+        it.sendPresence()
     }
 
     @Test

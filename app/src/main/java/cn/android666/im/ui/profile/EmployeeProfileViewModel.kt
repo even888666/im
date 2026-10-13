@@ -8,11 +8,15 @@ import cn.android666.im.core.xmpp.XmppException
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.org.Employee
 import cn.android666.im.data.org.OrgRepository
+import cn.android666.im.data.presence.ColleaguePresence
+import cn.android666.im.data.presence.PresenceRepository
 import cn.android666.im.ui.common.ErrorMessages
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -29,21 +33,44 @@ import kotlinx.coroutines.launch
 data class ProfileUiState(val employee: Employee?, val departmentPath: String, val self: Boolean, val contact: Boolean)
 
 /**
- * 同事资料卡（开发计划 3.18、3.19）：员工信息、发消息、打电话、添加 / 移除常用联系人；在线状态在 3.20 中加入。
+ * 同事资料卡（开发计划 3.18 ~ 3.20）：员工信息、在线状态、发消息、打电话、添加 / 移除常用联系人。
  *
  * @property org 组织架构
  * @property contacts 常用联系人
+ * @property presences 在线状态
  * @property jid 同事的 bare JID
  * @property selfJid 本人的 bare JID（未登录时为 null）
  */
 class EmployeeProfileViewModel(
     private val org: OrgRepository,
     private val contacts: ContactRepository,
+    private val presences: PresenceRepository,
     private val jid: String,
     private val selfJid: String?,
 ) : ViewModel() {
 
     private val log = Logs.file(TAG)
+
+    private val mutablePresence = MutableStateFlow<ColleaguePresence?>(null)
+
+    /** 在线状态（协议规范 §5.3，缓存 60 秒）；还没查到或查询失败时为 null */
+    val presence: StateFlow<ColleaguePresence?> = mutablePresence.asStateFlow()
+
+    init {
+        refreshPresence()
+    }
+
+    /** 查询在线状态（打开资料卡、回到页面时调用；60 秒内使用缓存） */
+    fun refreshPresence() {
+        viewModelScope.launch {
+            try {
+                mutablePresence.value = presences.get(jid)
+            } catch (e: XmppException) {
+                // 断网等情况不显示在线状态，不提示
+                log.info("查询在线状态失败：{}", e.message)
+            }
+        }
+    }
 
     /** 资料卡内容；还没读出时为 null */
     val state: StateFlow<ProfileUiState?> = combine(org.observeEmployee(jid), contacts.observeIsContact(jid)) { employee, isContact ->

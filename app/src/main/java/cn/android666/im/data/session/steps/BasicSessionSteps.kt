@@ -2,6 +2,7 @@ package cn.android666.im.data.session.steps
 
 import cn.android666.im.core.common.ServerClock
 import cn.android666.im.core.log.Logs
+import cn.android666.im.core.xmpp.OwnPresence
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
 import cn.android666.im.core.xmpp.extension.account.AccountStatusRequest
@@ -103,16 +104,19 @@ class AccountStatusStep(private val client: XmppClient) : SessionStep {
 }
 
 /**
- * 第 8 步：发送初始在线状态，服务器开始投递离线消息（协议规范 §2.2）。
- * 获取 Roster（第 7 步）在常用联系人模块中实现（开发计划 3.19），会注册在本步骤之前。
+ * 第 8 步：发送初始在线状态，服务器开始投递离线消息（协议规范 §2.2）。获取 Roster（第 7 步，RosterStep）注册在本步骤之前。
  *
  * @property client XMPP 客户端
+ * @property presence 本人当前的在线状态（用户设置的忙碌、开会等，开发计划 3.20），默认在线
  */
-class InitialPresenceStep(private val client: XmppClient) : SessionStep {
+class InitialPresenceStep(
+    private val client: XmppClient,
+    private val presence: suspend () -> OwnPresence = { OwnPresence.AVAILABLE },
+) : SessionStep {
     override val name = "发送初始 presence"
 
     override suspend fun run(context: SessionContext): StepResult {
-        client.sendInitialPresence()
+        client.sendPresence(presence())
         return StepResult.Continue
     }
 }
