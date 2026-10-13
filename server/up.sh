@@ -39,9 +39,12 @@ if [[ -z "${OPENFIRE_NOFILE:-}" ]]; then
   export OPENFIRE_NOFILE
 fi
 
-# 3. 证书
+# 3. 证书。记录服务器证书的指纹：重新签发后需要重启 Openfire 才能加载新证书
+keystore="$SERVER_DIR/certs/out/openfire-keystore.p12"
+keystore_before="$(sha256sum "$keystore" 2>/dev/null | cut -d' ' -f1 || true)"
 bash "$SERVER_DIR/certs/gen-ca.sh"
 IM_DOMAIN="$IM_DOMAIN" EXTRA_SANS="${EXTRA_SANS:-}" bash "$SERVER_DIR/certs/gen-server-cert.sh"
+keystore_after="$(sha256sum "$keystore" | cut -d' ' -f1)"
 
 # 4. 下载安装包与插件
 bash "$SERVER_DIR/fetch.sh"
@@ -49,8 +52,16 @@ bash "$SERVER_DIR/fetch.sh"
 # 5. 生成 coturn 配置，构建并启动
 bash "$SERVER_DIR/scripts/render-coturn-conf.sh"
 log "构建并启动容器…"
+# 部署前 Openfire 是否已在运行：已运行的容器不会因为证书变化而被重新创建，需要手动重启
+openfire_running_before="$(compose ps -q --status running openfire 2>/dev/null || true)"
 compose build --quiet
 compose up -d --remove-orphans
+# 服务器证书重新签发过（含原来没有证书的情况）、且 Openfire 部署前已在运行时，重启它以加载新证书
+# （入口脚本在容器启动时安装证书）
+if [[ -n "$openfire_running_before" && "$keystore_before" != "$keystore_after" ]]; then
+  log "服务器证书已更新，重启 Openfire…"
+  compose restart openfire >/dev/null
+fi
 wait_healthy postgres
 wait_healthy openfire 300
 wait_healthy coturn 60
