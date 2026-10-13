@@ -1,0 +1,14 @@
+2026-10-13 08:03:52.626 I (LogInitializer.kt:107) [SDK 37 Main Thread] -- 日志文件名前缀=10086，读取耗时 0ms 
+2026-10-13 08:03:52.630 I (LogInitializerTest.kt:55) [SDK 37 Main Thread] -- 业务日志 
+2026-10-13 08:06:15.034 I (LogInitializer.kt:107) [SDK 37 Main Thread] -- 日志文件名前缀=10086，读取耗时 0ms 
+2026-10-13 08:06:15.047 I (LogInitializerTest.kt:59) [SDK 37 Main Thread] -- 业务日志 
+2026-10-13 08:06:15.178 I (LogInitializer.kt:107) [SDK 37 Main Thread] -- 日志文件名前缀=(默认)，读取耗时 2ms 
+2026-10-13 08:06:15.178 I (LogInitializerTest.kt:77) [SDK 37 Main Thread] -- 未登录 
+2026-10-13 08:06:15.247 I LogInitializer [SDK 37 Main Thread] -- 日志文件名前缀=(默认)，读取耗时 1ms 
+2026-10-13 08:06:15.247 I Test [SDK 37 Main Thread] -- 正常流程 
+2026-10-13 08:06:35.946 I (LogInitializer.kt:107) [SDK 37 Main Thread] -- 日志文件名前缀=10086，读取耗时 27ms 
+2026-10-13 08:06:35.959 I (LogInitializerTest.kt:62) [SDK 37 Main Thread] -- 业务日志 
+2026-10-13 08:06:54.071 I (LogInitializer.kt:107) [SDK 37 Main Thread] -- 日志文件名前缀=10086，读取耗时 20ms 
+2026-10-13 08:06:54.077 I (LogInitializerTest.kt:66) [SDK 37 Main Thread] -- 业务日志 
+2026-10-13 08:07:19.943 I (LogInitializer.kt:107) [SDK 37 Main Thread] -- 日志文件名前缀=10086，读取耗时 34ms 
+2026-10-13 08:07:19.949 I (LogInitializerTest.kt:66) [SDK 37 Main Thread] -- 业务日志 

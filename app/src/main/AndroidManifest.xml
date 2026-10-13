@@ -21,6 +21,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 日志库初始化：用本项目的 LogInitializer 替代库自带的 LogbackInitializer（见 日志库/日志库说明.md） -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.startup"
+            android:exported="false"
+            tools:node="merge"
+            tools:replace="android:authorities">
+            <meta-data
+                android:name="cn.android666.im.core.log.LogInitializer"
+                android:value="androidx.startup" />
+            <meta-data
+                android:name="cn.android666.logback.android.LogbackInitializer"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>

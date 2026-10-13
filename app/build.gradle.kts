@@ -36,8 +36,17 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    packaging {
+        resources {
+            // logback-classic 与 logback-core 都带有 META-INF/INDEX.LIST 等清单文件，打包时冲突；
+            // 这些文件只用于 JVM 的 jar 索引，Android 上无用，直接排除
+            excludes += setOf("META-INF/INDEX.LIST", "META-INF/DEPENDENCIES")
+        }
+    }
     buildFeatures {
         viewBinding = true
+        // LogInitializer 需要 BuildConfig.DEBUG 决定日志级别（AGP 9 默认不生成 BuildConfig）
+        buildConfig = true
     }
     testOptions {
         unitTests {
@@ -67,6 +76,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.logback.android)
+    implementation(libs.androidx.startup.runtime)
     implementation(libs.material)
 
     testImplementation(libs.junit)

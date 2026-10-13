@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <shutdownHook>
+        <delay>1000</delay>
+    </shutdownHook>
+
+    <!--
+        Debug 版本使用 %file:%line（源文件名+行号），Release 版本使用 %class（完整类名），
+        因为 Release 混淆后 %file 会变成 r8-map-id 无法还原，%line 混淆后也无法还原
+        （即使查 mapping 也只能得到行号范围，无法精确定位），
+        而 %class 输出的混淆类名可通过 mapping.txt 精确还原
+    -->
+    <condition class="ch.qos.logback.core.boolex.PropertyEqualityCondition">
+        <!-- 判断条件：isDebug == true -->
+        <key>isDebug</key>
+        <value>true</value>
+    </condition>
+    <if>
+        <!--如果条件为真执行这里（Debug版本不混淆，所以可以使用文件名和行号）-->
+        <then>
+            <property name="LOGCAT_PATTERN" value="\(%file:%line\) [%thread] -- %message %kvp%n"/>
+        </then>
+        <else>
+            <!--如果条件为假执行这里（Release版本有可能会启用R8优化，混淆后文件名和行号变得没意义了，改用logger名称）-->
+            <property name="LOGCAT_PATTERN" value="%logger{0} [%thread] -- %message %kvp%n"/>
+        </else>
+    </if>
+
+    <!--文件日志消息格式-->
+    <property name="FILE_PATTERN" value="%date{yyyy-MM-dd HH:mm:ss.SSS} %.-1level ${LOGCAT_PATTERN}"/>
+
+    <appender name="LOGCAT" class="cn.android666.logback.android.LogcatAppender">
+        <encoder>
+            <pattern>${LOGCAT_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!--sift单词含义：筛选、筛查、仔细检查, SiftingAppender功能：用于动态生成Appender，比较适合使用动态账号做文件名的场景，可以随意动态切账号-->
+    <appender name="AppLogAppender" class="ch.qos.logback.classic.sift.SiftingAppender">
+
+        <!--默认的`MDCBasedDiscriminator`从MDC中取key的值，它是与线程相关的，所以通过自定义discriminator，使其与线程无关，在什么线程都能正确的取到账号信息。-->
+        <!--使用LogbackManager.fileNamePrefix = "30300"即可修改前缀。-->
+        <discriminator class="cn.android666.logback.android.FileNamePrefixDiscriminator"/>
+
+        <!--SiftingAppender通过<sift>中指定的模板来动态创建内置的appender。注：sift标签内只能有一个appender，所以如果有需要只能配置多个SiftingAppender-->
+        <sift>
+            <!--通过SiftingAppender可以动态生产Appender，使用LogbackManager.fileNamePrefix = "30300"即可修改前缀。-->
+            <!--在代码中，我们无需要知道这个带前缀的Appender的名称，因为我们在使用时是引用的<SiftingAppender>中的名称，它会根据当前Discriminator的值拿到正确的正真干活的Appender-->
+            <appender name="FILE-${fileNamePrefix}" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <!--当未达到滚动条件时，先以这个文件名保存日志，这里不能直接使用%d，要想使用时间做文件名，必须使用timestamp来进行配置 -->
+                <file>${LOG_DIR}/log/${fileNamePrefix}_log.log</file>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <!--按时间进行滚动，%i为按文件大小滚动，当未达到按时间滚动，但达到了按大小滚动时，则%i会变为0、1、2、3等序号-->
+                    <!--轮转是由日志驱动的，比如当天产生了一些日志，然后就不再有日志了，如果到了第二天也没产生新日志，则不会发生轮转，直到产生新日志时才会进行轮转-->
+                    <!--这里采用zip压缩，而不是gz，因为在Android中，日志文件本来就比较小，差距几乎可以忽略，且Windows中可以直接打开zip文件，方便查看-->
+                    <fileNamePattern>${LOG_DIR}/log/${fileNamePrefix}_log_%d{yyyy-MM-dd, Asia/Shanghai}.log.zip</fileNamePattern>
+                    <!-- 设置按时间轮转日志的保存历史数量，超出数量的将会被删除，假设按天轮转，则为保存3天，假设按小时轮转，则为保存3小时。按文件大小轮转的数量不会被计算，比如按天轮转，但是日志太多，导致一天内产生了许多个日志，这些日志都算作历史数量一，并不会被算作多个数量 -->
+                    <maxHistory>14</maxHistory>
+                    <!--设置日志文件的总大小，超过这个大小后，旧的日志将会被删除，若对文件进行压缩，则以压缩后的大小进行计算-->
+                    <!--单位：KB、MB、GB，如需测试这个配置，可改为300KB，maxFileSize改为10MB，再按分进行轮转-->
+                    <totalSizeCap>500MB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <!--指定保存文件的编码，默认使用JVM 默认编码，即：Charset.defaultCharset() -->
+                    <charset>UTF-8</charset>
+                    <pattern>${FILE_PATTERN}</pattern>
+                </encoder>
+            </appender>
+        </sift>
+
+    </appender>
+
+    <!--xmpp日志Appender（原 SIP 项目中为 sip 日志 Appender）：写入xmpp目录，用于记录XMPP报文与连接相关日志（见 Android工程架构.md §8）-->
+    <appender name="XmppLogAppender" class="ch.qos.logback.classic.sift.SiftingAppender">
+
+        <discriminator class="cn.android666.logback.android.FileNamePrefixDiscriminator"/>
+
+        <sift>
+            <appender name="XMPP-${fileNamePrefix}" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>${LOG_DIR}/xmpp/${fileNamePrefix}_xmpp.log</file>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <fileNamePattern>${LOG_DIR}/xmpp/${fileNamePrefix}_xmpp_%d{yyyy-MM-dd, Asia/Shanghai}.log.zip</fileNamePattern>
+                    <maxHistory>14</maxHistory>
+                    <totalSizeCap>500MB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <charset>UTF-8</charset>
+                    <pattern>${FILE_PATTERN}</pattern>
+                </encoder>
+            </appender>
+        </sift>
+
+    </appender>
+
+    <appender name="BugAppender" class="ch.qos.logback.classic.sift.SiftingAppender">
+
+        <discriminator class="cn.android666.logback.android.FileNamePrefixDiscriminator"/>
+
+        <sift>
+            <appender name="Bug-${fileNamePrefix}" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>${LOG_DIR}/bug/${fileNamePrefix}_bug.log</file>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <fileNamePattern>${LOG_DIR}/bug/${fileNamePrefix}_bug_%d{yyyy-MM-dd, Asia/Shanghai}.log.zip</fileNamePattern>
+                    <maxHistory>14</maxHistory>
+                    <totalSizeCap>500MB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <charset>UTF-8</charset>
+                    <pattern>${FILE_PATTERN}</pattern>
+                </encoder>
+            </appender>
+        </sift>
+
+    </appender>
+
+    <!--把AppLogAppender包装成异步的-->
+    <appender name="AsyncAppLogAppender" class="ch.qos.logback.classic.AsyncAppender">
+        <!--在队列被占用了 80% 的情况下，AsyncAppender 会丢弃掉级别为 TRACE，DEBUG，INFO 的日志事件。这个策略虽然会丢失掉日志，但是对性能有利。-->
+        <queueSize>256</queueSize>
+        <!--默认，当队列还剩余 20% 的容量时，会丢弃级别为 TRACE, DEBUG 与 INFO 的日志，仅仅只保留 WARN 与 ERROR 级别的日志。想要保留所有的事件，可以设置为 0-->
+        <discardingThreshold>0</discardingThreshold>
+        <!--默认为 false，在队列满的时候 appender 会阻塞而不是丢弃信息。设置为 true，appender 不会阻塞你的应用而会将消息丢弃-->
+        <!--解决问题：日志已在队列里但还没从队列刷到文件-->
+        <neverBlock>false</neverBlock>
+        <!--Logback关闭时，等待队列排空的最长时间，默认值为1000，单位ms，Logback关闭时Appender不再接收新日志-->
+        <maxFlushTime>1000</maxFlushTime>
+        <!--Logback中的消息封装在LoggingEvent对象中，如果includeCallerData设置为true的话，LoggingEvent对象会包含调用者信息-->
+        <includeCallerData>${isDebug}</includeCallerData>
+        <appender-ref ref="AppLogAppender"/>
+    </appender>
+
+    <appender name="AsyncXmppLogAppender" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>256</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>false</neverBlock>
+        <maxFlushTime>1000</maxFlushTime>
+        <!--原 SIP 项目固定为 true；XMPP 报文日志量较大，获取调用者信息有性能开销，改为与 AsyncAppLogAppender 一致，仅 Debug 版开启-->
+        <includeCallerData>${isDebug}</includeCallerData>
+        <appender-ref ref="XmppLogAppender"/>
+    </appender>
+
+    <!--这里配置additivity为false，则Bug日志不会被分发到父logger（即root）中，也就是说不会输出到控制台，
+        因为defaultUncaughtExceptionHandler?.uncaughtException(t, e)本身就会输出异常信息到控制台-->
+    <logger name="bug" level="TRACE" additivity="false">
+        <appender-ref ref="BugAppender" />
+    </logger>
+
+    <!--条件 logger 配置-->
+    <condition class="ch.qos.logback.core.boolex.PropertyEqualityCondition">
+        <!-- 判断条件：isDebug == true -->
+        <key>isDebug</key>
+        <value>true</value>
+    </condition>
+    <if>
+        <!--如果条件为真执行这里（测试环境，输出所有日志）-->
+        <then>
+            <!--logcat.* logger → 控制台（additivity=false 避免分发到父logger(即root)，导致日志重复输出到）-->
+            <logger name="logcat" level="TRACE" additivity="false">
+                <appender-ref ref="LOGCAT" />
+            </logger>
+            <!--file.* logger → 文件 + 控制台（additivity=true，Propagation 到 root → LOGCAT）-->
+            <logger name="file" level="TRACE" additivity="true">
+                <appender-ref ref="AsyncAppLogAppender" />
+            </logger>
+            <logger name="xmpp" level="TRACE" additivity="true">
+                <appender-ref ref="AsyncXmppLogAppender" />
+            </logger>
+            <root level="TRACE">
+                <appender-ref ref="LOGCAT" />
+            </root>
+        </then>
+        <else>
+            <!--如果条件为假执行这里（生产环境，不输出控制台日志，文件日志只记录INFO及以上级别的日志）-->
+            <logger name="file" level="INFO" additivity="false">
+                <appender-ref ref="AsyncAppLogAppender" />
+            </logger>
+            <logger name="xmpp" level="INFO" additivity="false">
+                <appender-ref ref="AsyncXmppLogAppender" />
+            </logger>
+        </else>
+    </if>
+
+</configuration>

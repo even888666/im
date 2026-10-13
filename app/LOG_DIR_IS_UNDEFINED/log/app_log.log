@@ -1,0 +1,10 @@
+2026-10-13 08:06:36.546 I (LogInitializer.kt:107) [SDK 37 Main Thread] -- 日志文件名前缀=(默认)，读取耗时 1ms 
+2026-10-13 08:06:36.546 I (LogInitializerTest.kt:80) [SDK 37 Main Thread] -- 未登录 
+2026-10-13 08:06:36.633 I LogInitializer [SDK 37 Main Thread] -- 日志文件名前缀=(默认)，读取耗时 2ms 
+2026-10-13 08:06:36.633 I Test [SDK 37 Main Thread] -- 正常流程 
+2026-10-13 08:06:54.606 I (LogInitializer.kt:107) [SDK 37 Main Thread] -- 日志文件名前缀=(默认)，读取耗时 2ms 
+2026-10-13 08:06:54.606 I (LogInitializerTest.kt:84) [SDK 37 Main Thread] -- 未登录 
+2026-10-13 08:06:54.697 I LogInitializer [SDK 37 Main Thread] -- 日志文件名前缀=(默认)，读取耗时 1ms 
+2026-10-13 08:06:54.697 I Test [SDK 37 Main Thread] -- 正常流程 
+2026-10-13 08:07:20.617 I LogInitializer [SDK 37 Main Thread] -- 日志文件名前缀=(默认)，读取耗时 3ms 
+2026-10-13 08:07:20.618 I Test [SDK 37 Main Thread] -- 正常流程 

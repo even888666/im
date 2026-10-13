@@ -1,0 +1,5 @@
+2026-10-13 08:03:52.631 I (LogInitializerTest.kt:56) [SDK 37 Main Thread] -- <message/> 
+2026-10-13 08:06:15.048 I (LogInitializerTest.kt:60) [SDK 37 Main Thread] -- <message/> 
+2026-10-13 08:06:35.963 I (LogInitializerTest.kt:63) [SDK 37 Main Thread] -- <message/> 
+2026-10-13 08:06:54.077 I (LogInitializerTest.kt:67) [SDK 37 Main Thread] -- <message/> 
+2026-10-13 08:07:19.950 I (LogInitializerTest.kt:67) [SDK 37 Main Thread] -- <message/> 
