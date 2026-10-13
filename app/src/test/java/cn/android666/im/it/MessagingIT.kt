@@ -170,6 +170,24 @@ class MessagingIT {
         }
     }
 
+    /** 已读标记（开发计划 4.9，协议规范 §8.2）：B 对 A 的消息发送 displayed，A 收到；带 store 提示进入存档 */
+    @Test
+    fun displayed_deliveredToSender(): Unit = runBlocking {
+        val a = login(5)
+        val b = login(6)
+        val id = UUID.randomUUID().toString()
+
+        coroutineScope {
+            val received = expect(b) { it.message.msgId == id }
+            a.sendMessage(MessageCodec.chat(jidB, id, "请阅", MessageContent.Text), TIMEOUT)
+            received.await()
+
+            val displayed = expect(a) { it.message.displayedId == id }
+            b.sendMessage(MessageCodec.displayed(jidA, id, UUID.randomUUID().toString()), TIMEOUT)
+            assertThat(displayed.await().message.from).startsWith(jidB)
+        }
+    }
+
     /**
      * Carbons 多端同步（开发计划 4.6，协议规范 §11.1）：A 的 android 端和 pc 端同时在线，
      * pc 端发出的、pc 端收到的单聊消息都抄送到 android 端；pc 端发给"文件传输助手"（本人 bare JID）的消息 android 端也能收到。

@@ -24,12 +24,13 @@ import kotlinx.coroutines.launch
  * 按到达顺序逐条处理。
  *
  * 当前处理：单聊的用户可见消息（去重 → 写库 → 更新会话 / 未读 → 回送达回执）、送达回执与服务器退回（4.5）、
- * Carbons 多端同步与文件传输助手（4.6）。
- * 其余类型在对应的小功能中接入：已读（4.9）、MAM（4.10，由补拉器自己收集）、
+ * Carbons 多端同步与文件传输助手（4.6）、已读标记（4.9）。
+ * 其余类型在对应的小功能中接入：MAM（4.10，由补拉器自己收集）、
  * 撤回（4.12）、正在输入（4.14）、群聊（M6）。
  *
  * @property client XMPP 客户端
  * @property repository 消息仓库
+ * @property readMarkers 已读标记（正在查看的会话收到新消息时发送已读；其他端已读的同步）
  * @property serverClock 服务器时间（实时消息的时间）
  * @property ids ID 生成器（回执报文的 ID、缺少 ID 的消息）
  * @property selfJid 本人 bare JID；未登录时为 null
@@ -38,6 +39,7 @@ import kotlinx.coroutines.launch
 class IncomingMessageHandler(
     private val client: XmppClient,
     private val repository: MessageRepository,
+    private val readMarkers: ReadMarkers,
     private val serverClock: ServerClock,
     private val ids: IdGenerator,
     private val selfJid: () -> String?,
@@ -103,6 +105,7 @@ class IncomingMessageHandler(
             msg.type == "error" -> onError(msg)
             msg.type == "groupchat" -> log.debug("群消息暂未处理（M6）：id={}", msg.msgId)
             msg.receivedId != null -> onReceipt(msg, msg.receivedId)
+            msg.displayedId != null -> onDisplayed(msg, msg.displayedId)
             msg.content != null && isChatType(msg) -> onChatMessage(msg, self)
             else -> log.debug("暂未处理的消息：type={}，id={}", msg.type, msg.msgId)
         }
@@ -119,6 +122,19 @@ class IncomingMessageHandler(
         val conversationId = IncomingMessageMapper.bareJid(from)
         val updated = repository.markDelivered(conversationId, receivedId)
         log.info("送达回执：msgId={}，来自={}，更新={}", receivedId, conversationId, updated)
+    }
+
+    /**
+     * 对方的已读标记（协议规范 §8.2）：被标记的消息及之前本人发出的消息都改为"已读"。
+     *
+     * @param msg 已读报文
+     * @param displayedId 被标记已读的消息 ID
+     */
+    private suspend fun onDisplayed(msg: MessageStanza, displayedId: String) {
+        val from = msg.from ?: return
+        val conversationId = IncomingMessageMapper.bareJid(from)
+        val updated = repository.markReadByPeer(conversationId, displayedId)
+        log.info("对方已读：msgId={}，会话={}，更新 {} 条", displayedId, conversationId, updated)
     }
 
     /**
@@ -151,9 +167,15 @@ class IncomingMessageHandler(
         }
         if (envelope.sent) {
             // 本人其他端发出：用户可见的消息保存为本人发出的；回执、正在输入等不处理（已读同步见 4.9）
+            val to = msg.to ?: return
+            val peer = IncomingMessageMapper.bareJid(to)
             if (msg.content != null && isChatType(msg)) {
-                val to = msg.to ?: return
-                saveOwn(msg, IncomingMessageMapper.bareJid(to), self, "抄送")
+                saveOwn(msg, peer, self, "抄送")
+            } else if (msg.displayedId != null) {
+                // 本人在其他端看过了这个会话：按剩余的未读消息更新未读数（多端已读同步，协议规范 §8.2）
+                val remaining = repository.applyReadElsewhere(peer, msg.displayedId)
+                readMarkers.onMarkedElsewhere(peer, msg.displayedId)
+                log.info("其他端已读：会话={}，msgId={}，剩余未读={}", peer, msg.displayedId, remaining)
             } else {
                 log.debug("其他端发出的非消息报文：id={}", msg.msgId)
             }
@@ -162,6 +184,7 @@ class IncomingMessageHandler(
         // 本人其他端收到：与本端收到的处理相同，但回执由收到的那一端负责
         when {
             msg.receivedId != null -> onReceipt(msg, msg.receivedId)
+            msg.displayedId != null -> onDisplayed(msg, msg.displayedId)
             msg.content != null && isChatType(msg) -> onChatMessage(msg, self, reply = false)
             else -> log.debug("其他端收到的非消息报文：id={}", msg.msgId)
         }
@@ -232,6 +255,8 @@ class IncomingMessageHandler(
         if (saved != null) {
             log.info("收到消息：msgId={}，来自={}，类型={}，离线={}", saved.msgId, sender, saved.type, msg.delayStamp != null)
             newMessageFlow.tryEmit(saved)
+            // 用户正在看这个会话：立即标记已读（协议规范 §8.2）
+            if (repository.activeConversationId() == sender) scope.launch { readMarkers.markConversationRead(sender) }
         } else {
             log.info("重复的消息，丢弃：msgId={}，来自={}", entity.msgId, sender)
         }

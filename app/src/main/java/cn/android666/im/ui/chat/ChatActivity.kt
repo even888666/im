@@ -43,6 +43,7 @@ class ChatActivity : AppCompatActivity() {
                     kind = kind,
                     messages = container.messageRepository,
                     conversations = container.conversationRepository,
+                    readMarkers = container.readMarkers,
                     org = container.orgRepository,
                 )
             }

@@ -13,6 +13,7 @@ import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.xmpp.Credential
 import cn.android666.im.core.xmpp.extension.msg.MessageCodec
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.testing.FakeXmppClient
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineStart
@@ -57,8 +58,14 @@ class IncomingMessageHandlerTest {
      * @property handler 被测对象
      * @property repository 消息仓库
      * @property db 数据库
+     * @property readMarkers 已读标记
      */
-    private class Rig(val handler: IncomingMessageHandler, val repository: MessageRepository, val db: ImDatabase)
+    private class Rig(
+        val handler: IncomingMessageHandler,
+        val repository: MessageRepository,
+        val db: ImDatabase,
+        val readMarkers: ReadMarkers,
+    )
 
     /**
      * 创建测试环境：10001 已登录，服务器时间 = 虚拟时间 + 1_000_000。
@@ -85,9 +92,10 @@ class IncomingMessageHandlerTest {
         val selfJid = { newHolder.username?.let { "$it@im.example.com" } }
         val queue = SendQueue(client, newHolder, backgroundScope, clock)
         val repository = MessageRepository(newHolder, queue, ServerClock(clock), ids, selfJid)
-        val handler = IncomingMessageHandler(client, repository, ServerClock(clock), ids, selfJid, backgroundScope)
+        val readMarkers = ReadMarkers(client, repository, ConversationRepository(newHolder), ids)
+        val handler = IncomingMessageHandler(client, repository, readMarkers, ServerClock(clock), ids, selfJid, backgroundScope)
         runCurrent()
-        return Rig(handler, repository, db)
+        return Rig(handler, repository, db, readMarkers)
     }
 
     /** 对方发来的文本消息（协议规范 §6.1） */
@@ -448,6 +456,136 @@ class IncomingMessageHandlerTest {
         assertThat(rig.db.messageDao().last(SELF)!!.rowId).isEqualTo(sent.rowId)
         assertThat(rig.db.messageDao().get(SELF, sent.msgId)!!.status).isEqualTo(MessageEntity.STATUS_SENT)
     }
+
+    /** 已发送的已读报文中被标记的消息 ID */
+    private fun displayedSent(): List<String?> =
+        client.sentMessages.map { MessageCodec.parse(it).message }.filter { it.displayedId != null }.map { it.displayedId }
+
+    /** 4.9：打开会话 → 清除未读，对最新一条对方的消息发送已读；同一条不重复发送；有新消息后再发 */
+    @Test
+    fun markConversationRead_sendsDisplayedOnce() = runTest {
+        val rig = rig()
+        client.receive(chat("a"))
+        client.receive(chat("b"))
+        runCurrent()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(2)
+
+        rig.readMarkers.markConversationRead(BOB)
+        rig.readMarkers.markConversationRead(BOB)
+
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(0)
+        assertThat(displayedSent()).containsExactly("b")
+        val displayed = MessageCodec.parse(client.sentMessages.last()).message
+        assertThat(displayed.to).isEqualTo(BOB)
+
+        client.receive(chat("c"))
+        runCurrent()
+        rig.readMarkers.markConversationRead(BOB)
+        assertThat(displayedSent()).containsExactly("b", "c").inOrder()
+    }
+
+    /** 未连接时已读标记发送失败：不记录，下次再发 */
+    @Test
+    fun markConversationRead_retryAfterFailure() = runTest {
+        val rig = rig()
+        client.receive(chat("a"))
+        runCurrent()
+        client.messageAckHandler = { _, _ -> throw cn.android666.im.core.xmpp.XmppException.Timeout() }
+
+        rig.readMarkers.markConversationRead(BOB)
+        client.messageAckHandler = { _, _ -> true }
+        rig.readMarkers.markConversationRead(BOB)
+
+        assertThat(displayedSent()).containsExactly("a", "a")
+    }
+
+    /** 没有对方的消息：只清未读，不发送 */
+    @Test
+    fun markConversationRead_noIncoming() = runTest {
+        val rig = rig()
+        rig.readMarkers.markConversationRead(BOB)
+        assertThat(client.sentMessages).isEmpty()
+    }
+
+    /** 正在查看的会话收到新消息：自动发送已读 */
+    @Test
+    fun activeConversation_newMessageMarkedRead() = runTest {
+        val rig = rig()
+        rig.repository.setActiveConversation(BOB)
+
+        client.receive(chat("live"))
+        runCurrent()
+
+        assertThat(displayedSent()).containsExactly("live")
+    }
+
+    /** 对方已读（直接收到或其他端收到的抄送）：该消息及之前本人发出的改为已读，之后的不变 */
+    @Test
+    fun peerDisplayed_marksReadUpTo() = runTest {
+        val rig = rig()
+        rig.db.messageDao().insert(outgoingAt("o1", 100))
+        rig.db.messageDao().insert(outgoingAt("o2", 200))
+        rig.db.messageDao().insert(outgoingAt("o3", 300))
+
+        client.receive("<message type='chat' id='d1' from='$BOB/pc'><displayed xmlns='urn:xmpp:chat-markers:0' id='o2'/></message>")
+        runCurrent()
+        assertThat(rig.db.messageDao().get(BOB, "o1")!!.status).isEqualTo(MessageEntity.STATUS_READ)
+        assertThat(rig.db.messageDao().get(BOB, "o2")!!.status).isEqualTo(MessageEntity.STATUS_READ)
+        assertThat(rig.db.messageDao().get(BOB, "o3")!!.status).isEqualTo(MessageEntity.STATUS_SENT)
+
+        client.receive(
+            carbon(
+                "received",
+                "<message xmlns='jabber:client' type='chat' id='d2' from='$BOB/pc' to='$SELF/pc'>" +
+                    "<displayed xmlns='urn:xmpp:chat-markers:0' id='o3'/></message>",
+            ),
+        )
+        runCurrent()
+        assertThat(rig.db.messageDao().get(BOB, "o3")!!.status).isEqualTo(MessageEntity.STATUS_READ)
+        // 已读报文本身不入库
+        assertThat(rig.db.conversationDao().get(BOB)).isNull()
+    }
+
+    /** 本人其他端已读（Carbons sent 的 displayed）：未读改为之后的消息数；本端不再重复发送该已读 */
+    @Test
+    fun displayedFromOtherDevice_syncsUnread() = runTest {
+        val rig = rig()
+        client.receive(chat("a", extra = "<delay xmlns='urn:xmpp:delay' stamp='1970-01-01T00:00:01.000Z'/>"))
+        client.receive(chat("b", extra = "<delay xmlns='urn:xmpp:delay' stamp='1970-01-01T00:00:02.000Z'/>"))
+        client.receive(chat("c", extra = "<delay xmlns='urn:xmpp:delay' stamp='1970-01-01T00:00:03.000Z'/>"))
+        runCurrent()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(3)
+
+        client.receive(
+            carbon(
+                "sent",
+                "<message xmlns='jabber:client' type='chat' id='rd' from='$SELF/pc' to='$BOB'>" +
+                    "<displayed xmlns='urn:xmpp:chat-markers:0' id='b'/><store xmlns='urn:xmpp:hints'/></message>",
+            ),
+        )
+        runCurrent()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(1)
+
+        // 其他端已读到最后一条：清零；本端再打开会话不重复发送
+        client.receive(
+            carbon(
+                "sent",
+                "<message xmlns='jabber:client' type='chat' id='rd2' from='$SELF/pc' to='$BOB'>" +
+                    "<displayed xmlns='urn:xmpp:chat-markers:0' id='c'/></message>",
+            ),
+        )
+        runCurrent()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(0)
+        val before = client.sentMessages.size
+        rig.readMarkers.markConversationRead(BOB)
+        assertThat(client.sentMessages.size).isEqualTo(before)
+    }
+
+    /** 发出的消息（指定时间） */
+    private fun outgoingAt(msgId: String, time: Long) = MessageEntity(
+        msgId = msgId, conversationId = BOB, senderJid = SELF, direction = MessageEntity.DIRECTION_OUT, type = "text",
+        body = "x", status = MessageEntity.STATUS_SENT, serverTime = time,
+    )
 
     private companion object {
         const val SELF = "10001@im.example.com"

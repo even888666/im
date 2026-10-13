@@ -16,6 +16,7 @@ import cn.android666.im.data.contact.RosterStep
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MessageRepository
+import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.data.presence.PresenceRepository
@@ -186,9 +187,12 @@ class AppContainer(context: Context) {
     /** 会话列表：查询、删除、未读数 */
     val conversationRepository: ConversationRepository by lazy { ConversationRepository(userDatabaseHolder) }
 
-    /** 收到的消息的分发：去重写库、回执 */
+    /** 单聊已读标记 */
+    val readMarkers: ReadMarkers by lazy { ReadMarkers(xmppClient, messageRepository, conversationRepository, idGenerator) }
+
+    /** 收到的消息的分发：去重写库、回执、已读 */
     val incomingMessageHandler: IncomingMessageHandler by lazy {
-        IncomingMessageHandler(xmppClient, messageRepository, serverClock, idGenerator, selfJid, applicationScope)
+        IncomingMessageHandler(xmppClient, messageRepository, readMarkers, serverClock, idGenerator, selfJid, applicationScope)
     }
 
     /** 前后台切换处理（CSI、回到前台立即重连、按需同步组织架构） */

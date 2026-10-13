@@ -109,6 +109,44 @@ class MessageRepository(
         databases.require().messageDao().markDelivered(conversationId, msgId) > 0
 
     /**
+     * 对方已读（开发计划 4.9，协议规范 §8.2）：被标记的消息及之前本人发出的消息都改为"已读"。
+     *
+     * @param conversationId 会话 ID（对方 bare JID）
+     * @param msgId 被标记已读的消息 ID（本人发出的）
+     * @return 更新的条数；找不到该消息时为 0
+     */
+    suspend fun markReadByPeer(conversationId: String, msgId: String): Int {
+        val dao = databases.require().messageDao()
+        val message = dao.get(conversationId, msgId)?.takeIf { it.direction == MessageEntity.DIRECTION_OUT } ?: return 0
+        return dao.markReadUpTo(conversationId, message.serverTime)
+    }
+
+    /**
+     * 本人其他端已读到某条消息（开发计划 4.9，多端已读同步）：未读数改为该消息之后对方发来的消息数。
+     *
+     * @param conversationId 会话 ID
+     * @param msgId 其他端标记已读的消息 ID（对方发来的）
+     * @return 新的未读数；找不到该消息时为 null（不修改）
+     */
+    suspend fun applyReadElsewhere(conversationId: String, msgId: String): Int? {
+        val db = databases.require()
+        return db.withTransaction {
+            val message = db.messageDao().get(conversationId, msgId) ?: return@withTransaction null
+            val remaining = db.messageDao().countIncomingAfter(conversationId, message.serverTime)
+            db.conversationDao().setUnread(conversationId, remaining)
+            remaining
+        }
+    }
+
+    /**
+     * 会话中对方发来的最新一条消息（发送已读标记）。
+     *
+     * @param conversationId 会话 ID
+     * @return 消息；没有时为 null
+     */
+    suspend fun lastIncoming(conversationId: String): MessageEntity? = databases.require().messageDao().lastIncoming(conversationId)
+
+    /**
      * 服务器退回了发出的消息（开发计划 4.5，协议规范 §6.4）：标记发送失败。
      *
      * @param conversationId 会话 ID（错误报文的 from 的 bare JID，即原接收方）

@@ -17,6 +17,7 @@ import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.MessageState
+import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.testing.FakeClock
@@ -63,7 +64,9 @@ class ChatViewModelTest {
         val clock = FakeClock(startMillis = 10_000_000)
         val queue = SendQueue(client, holder, backgroundScope, clock)
         val messages = MessageRepository(holder, queue, ServerClock(clock), UuidIdGenerator()) { "10001@im.example.com" }
-        val vm = ChatViewModel(id, kind, messages, ConversationRepository(holder), OrgRepository(client, holder, clock))
+        val conversations = ConversationRepository(holder)
+        val readMarkers = ReadMarkers(client, messages, conversations, UuidIdGenerator())
+        val vm = ChatViewModel(id, kind, messages, conversations, readMarkers, OrgRepository(client, holder, clock))
         return vm to messages
     }
 

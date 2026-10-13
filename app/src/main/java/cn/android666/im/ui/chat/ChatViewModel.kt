@@ -13,6 +13,7 @@ import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.conversation.toEntityType
 import cn.android666.im.data.message.MessageRepository
+import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.org.OrgRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -45,6 +46,7 @@ sealed interface ChatEvent {
  * @property kind 会话类型
  * @property messages 消息仓库
  * @property conversations 会话仓库（清除未读）
+ * @property readMarkers 已读标记（单聊打开时发送）
  * @param org 组织架构（标题显示对方姓名）
  */
 class ChatViewModel(
@@ -52,6 +54,7 @@ class ChatViewModel(
     val kind: ConversationKind,
     private val messages: MessageRepository,
     private val conversations: ConversationRepository,
+    private val readMarkers: ReadMarkers,
     org: OrgRepository,
 ) : ViewModel() {
 
@@ -118,12 +121,12 @@ class ChatViewModel(
         }
     }
 
-    /** 页面可见：该会话的新消息不计未读，清除已有未读（发送已读标记见开发计划 4.9） */
+    /** 页面可见：该会话的新消息不计未读，清除已有未读；单聊同时向对方发送已读标记（开发计划 4.9） */
     fun onVisible() {
         messages.setActiveConversation(conversationId)
         viewModelScope.launch {
             try {
-                conversations.clearUnread(conversationId)
+                if (kind == ConversationKind.SINGLE) readMarkers.markConversationRead(conversationId) else conversations.clearUnread(conversationId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

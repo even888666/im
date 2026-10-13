@@ -86,6 +86,15 @@ interface ConversationDao {
     suspend fun clearUnread(id: String)
 
     /**
+     * 重新设置未读数（本人其他端已读到某条消息后，按剩余的未读消息数更新）；未读为 0 时同时清除"有人@我"。
+     *
+     * @param id 会话 ID
+     * @param count 未读数
+     */
+    @Query("UPDATE conversation SET unreadCount = :count, mentionMe = CASE WHEN :count = 0 THEN 0 ELSE mentionMe END WHERE id = :id")
+    suspend fun setUnread(id: String, count: Int)
+
+    /**
      * 保存草稿。
      *
      * @param id 会话 ID
