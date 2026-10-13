@@ -23,8 +23,9 @@ import kotlinx.coroutines.launch
  * 收到的消息的分发（开发计划 4.4，Android工程架构.md §4.5、§6.1）：订阅 [XmppClient.incomingMessages]，
  * 按到达顺序逐条处理。
  *
- * 当前处理：单聊的用户可见消息（去重 → 写库 → 更新会话 / 未读 → 回送达回执）、送达回执与服务器退回（4.5）。
- * 其余类型在对应的小功能中接入：Carbons（4.6）、已读（4.9）、MAM（4.10，由补拉器自己收集）、
+ * 当前处理：单聊的用户可见消息（去重 → 写库 → 更新会话 / 未读 → 回送达回执）、送达回执与服务器退回（4.5）、
+ * Carbons 多端同步与文件传输助手（4.6）。
+ * 其余类型在对应的小功能中接入：已读（4.9）、MAM（4.10，由补拉器自己收集）、
  * 撤回（4.12）、正在输入（4.14）、群聊（M6）。
  *
  * @property client XMPP 客户端
@@ -93,7 +94,7 @@ class IncomingMessageHandler(
             // MAM 结果由补拉器按 queryid 收集（4.10）
             is MessageEnvelope.Mam -> return
             is MessageEnvelope.Carbon -> {
-                log.debug("Carbons 抄送暂未处理（4.6）：sent={}，id={}", envelope.sent, msg.msgId)
+                onCarbon(envelope, msg, self)
                 return
             }
             null -> Unit
@@ -102,7 +103,7 @@ class IncomingMessageHandler(
             msg.type == "error" -> onError(msg)
             msg.type == "groupchat" -> log.debug("群消息暂未处理（M6）：id={}", msg.msgId)
             msg.receivedId != null -> onReceipt(msg, msg.receivedId)
-            msg.content != null && (msg.type == "chat" || msg.type == "normal") -> onChatMessage(msg, self)
+            msg.content != null && isChatType(msg) -> onChatMessage(msg, self)
             else -> log.debug("暂未处理的消息：type={}，id={}", msg.type, msg.msgId)
         }
     }
@@ -136,19 +137,85 @@ class IncomingMessageHandler(
     }
 
     /**
+     * Carbons 抄送（开发计划 4.6，协议规范 §11.1）：本人其他端发出（sent）或收到（received）的单聊报文。
+     * 外层 from 必须是本人 bare JID，否则可能是他人伪造的抄送（XEP-0280 §11），直接丢弃。
+     *
+     * @param envelope 抄送包装
+     * @param msg 内层报文
+     * @param self 本人 bare JID
+     */
+    private suspend fun onCarbon(envelope: MessageEnvelope.Carbon, msg: MessageStanza, self: String) {
+        if (envelope.outerFrom != self) {
+            log.warn("Carbons 的发送方不是本人，可能是伪造的，丢弃：outerFrom={}，id={}", envelope.outerFrom, msg.msgId)
+            return
+        }
+        if (envelope.sent) {
+            // 本人其他端发出：用户可见的消息保存为本人发出的；回执、正在输入等不处理（已读同步见 4.9）
+            if (msg.content != null && isChatType(msg)) {
+                val to = msg.to ?: return
+                saveOwn(msg, IncomingMessageMapper.bareJid(to), self, "抄送")
+            } else {
+                log.debug("其他端发出的非消息报文：id={}", msg.msgId)
+            }
+            return
+        }
+        // 本人其他端收到：与本端收到的处理相同，但回执由收到的那一端负责
+        when {
+            msg.receivedId != null -> onReceipt(msg, msg.receivedId)
+            msg.content != null && isChatType(msg) -> onChatMessage(msg, self, reply = false)
+            else -> log.debug("其他端收到的非消息报文：id={}", msg.msgId)
+        }
+    }
+
+    /**
+     * 本人发出的消息从其他端同步过来（Carbons 抄送，或其他端发给"文件传输助手"即本人 bare JID 的消息）：
+     * 保存为"已发送"，不计未读。本端自己发出的会按消息 ID 去重。
+     *
+     * @param msg 消息
+     * @param peer 对方 bare JID（文件传输助手为本人）
+     * @param self 本人 bare JID
+     * @param source 来源，写日志用
+     */
+    private suspend fun saveOwn(msg: MessageStanza, peer: String, self: String, source: String) {
+        val entity = IncomingMessageMapper.toEntity(
+            stanza = msg,
+            conversationId = peer,
+            senderJid = self,
+            direction = MessageEntity.DIRECTION_OUT,
+            status = MessageEntity.STATUS_SENT,
+            serverTime = msg.delayStamp ?: serverClock.nowMillis(),
+            selfJid = self,
+            fallbackId = ids::messageId,
+        )
+        val type = if (peer == self) ConversationEntity.TYPE_SELF else ConversationEntity.TYPE_SINGLE
+        val saved = repository.saveIncoming(entity, type)
+        log.info("其他端发出的消息（{}）：msgId={}，会话={}，新消息={}", source, entity.msgId, peer, saved != null)
+    }
+
+    /**
+     * 是否为单聊类型（chat，或未指定类型的 normal）。
+     *
+     * @param msg 消息
+     * @return 是则为 true
+     */
+    private fun isChatType(msg: MessageStanza): Boolean = msg.type == "chat" || msg.type == "normal"
+
+    /**
      * 单聊的用户可见消息：保存，并在需要时回送达回执（写库之后，协议规范 §8.1）。
      *
      * @param msg 消息
      * @param self 本人 bare JID
+     * @param reply 是否由本端回送达回执（Carbons 抄送过来的由收到的那一端回执）
      */
-    private suspend fun onChatMessage(msg: MessageStanza, self: String) {
+    private suspend fun onChatMessage(msg: MessageStanza, self: String, reply: Boolean = true) {
         val from = msg.from ?: run {
             log.warn("消息没有发送方，忽略：id={}", msg.msgId)
             return
         }
         val sender = IncomingMessageMapper.bareJid(from)
         if (sender == self) {
-            log.debug("本人其他端发给本人的消息暂未处理（4.6 文件传输助手）：id={}", msg.msgId)
+            // 文件传输助手：本人其他端发给本人 bare JID 的消息（协议规范 §11.1）
+            saveOwn(msg, self, self, "文件传输助手")
             return
         }
         val entity = IncomingMessageMapper.toEntity(
@@ -169,7 +236,7 @@ class IncomingMessageHandler(
             log.info("重复的消息，丢弃：msgId={}，来自={}", entity.msgId, sender)
         }
         // 重复的消息也回执：对方可能没收到上一次的回执（例如离线消息与重发同时到达）
-        if (msg.requestReceipt && msg.msgId != null) sendReceipt(from, msg.msgId!!)
+        if (reply && msg.requestReceipt && msg.msgId != null) sendReceipt(from, msg.msgId!!)
     }
 
     /**

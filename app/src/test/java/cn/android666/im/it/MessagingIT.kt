@@ -7,6 +7,7 @@ import cn.android666.im.core.xmpp.ServerConfig
 import cn.android666.im.core.xmpp.extension.msg.IncomingMessage
 import cn.android666.im.core.xmpp.extension.msg.MessageCodec
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.core.xmpp.extension.msg.MessageEnvelope
 import cn.android666.im.core.xmpp.smack.SmackXmppClient
 import cn.android666.im.testing.IntegrationTests
 import cn.android666.im.testing.ItServer
@@ -61,10 +62,11 @@ class MessagingIT {
      * 登录并发送初始 presence。
      *
      * @param index 测试账号序号
+     * @param resource 登录的 resource（同一账号多端同时在线时区分）
      * @return 客户端
      */
-    private suspend fun login(index: Int): SmackXmppClient = SmackXmppClient(
-        serverConfig = ServerConfig(domain = ItServer.domain, host = ItServer.HOST, port = ItServer.PORT),
+    private suspend fun login(index: Int, resource: String = ServerConfig.RESOURCE_ANDROID): SmackXmppClient = SmackXmppClient(
+        serverConfig = ServerConfig(domain = ItServer.domain, host = ItServer.HOST, port = ItServer.PORT, resource = resource),
         trustManager = ItServer.trustManager,
         dispatchers = dispatchers,
         clock = SystemTimeClock,
@@ -165,6 +167,42 @@ class MessagingIT {
             assertThat(msg.body).isEqualTo("离线消息")
             assertThat(msg.delayStamp).isNotNull()
             assertThat(msg.delayStamp!!).isAtMost(System.currentTimeMillis() + 60_000)
+        }
+    }
+
+    /**
+     * Carbons 多端同步（开发计划 4.6，协议规范 §11.1）：A 的 android 端和 pc 端同时在线，
+     * pc 端发出的、pc 端收到的单聊消息都抄送到 android 端；pc 端发给"文件传输助手"（本人 bare JID）的消息 android 端也能收到。
+     */
+    @Test
+    fun carbons_syncBetweenResources(): Unit = runBlocking {
+        val android = login(5).also { it.enableCarbons() }
+        val pc = login(5, resource = "pc").also { it.enableCarbons() }
+        val b = login(6)
+
+        coroutineScope {
+            // pc 发给 B → android 收到 sent 抄送
+            val sentId = UUID.randomUUID().toString()
+            val sentCopy = expect(android) { it.message.msgId == sentId }
+            pc.sendMessage(MessageCodec.chat(jidB, sentId, "pc 发的", MessageContent.Text), TIMEOUT)
+            val sent = sentCopy.await()
+            assertThat((sent.envelope as MessageEnvelope.Carbon).sent).isTrue()
+            assertThat(sent.envelope.outerFrom).isEqualTo(jidA)
+            assertThat(sent.message.to).isEqualTo(jidB)
+
+            // B 发给 A 的 pc 端（完整 JID）→ android 收到 received 抄送
+            val receivedId = UUID.randomUUID().toString()
+            val receivedCopy = expect(android) { it.message.msgId == receivedId }
+            b.sendMessage(MessageCodec.chat("$jidA/pc", receivedId, "发给 pc", MessageContent.Text), TIMEOUT)
+            val received = receivedCopy.await()
+            assertThat((received.envelope as MessageEnvelope.Carbon).sent).isFalse()
+            assertThat(received.message.from).startsWith(jidB)
+
+            // pc 发给文件传输助手（本人 bare JID）→ android 收到（直接路由或抄送）
+            val selfId = UUID.randomUUID().toString()
+            val selfCopy = expect(android) { it.message.msgId == selfId }
+            pc.sendMessage(MessageCodec.chat(jidA, selfId, "传给自己", MessageContent.Text), TIMEOUT)
+            assertThat(selfCopy.await().message.body).isEqualTo("传给自己")
         }
     }
 

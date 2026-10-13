@@ -330,7 +330,127 @@ class IncomingMessageHandlerTest {
         assertThat(rig.db.messageDao().get(BOB, "delivered")!!.status).isEqualTo(MessageEntity.STATUS_DELIVERED)
     }
 
+    /**
+     * Carbons 包装。
+     *
+     * @param kind sent / received
+     * @param inner 内层 message
+     * @param outerFrom 外层 from（正常为本人 bare JID）
+     */
+    private fun carbon(kind: String, inner: String, outerFrom: String = SELF) =
+        "<message xmlns='jabber:client' from='$outerFrom' to='$SELF/android' type='chat'>" +
+            "<$kind xmlns='urn:xmpp:carbons:2'><forwarded xmlns='urn:xmpp:forward:0'>$inner</forwarded></$kind></message>"
+
+    /** 4.6：本人 PC 端发给李四的消息抄送过来 → 保存为本人发出、已发送，不计未读 */
+    @Test
+    fun carbonSent_savedAsOwnMessage() = runTest {
+        val rig = rig()
+
+        client.receive(
+            carbon(
+                "sent",
+                "<message xmlns='jabber:client' type='chat' id='pc1' from='$SELF/pc' to='$BOB'>" +
+                    "<body>PC 端发的</body><request xmlns='urn:xmpp:receipts'/></message>",
+            ),
+        )
+        runCurrent()
+
+        val saved = rig.db.messageDao().get(BOB, "pc1")!!
+        assertThat(saved.direction).isEqualTo(MessageEntity.DIRECTION_OUT)
+        assertThat(saved.status).isEqualTo(MessageEntity.STATUS_SENT)
+        assertThat(saved.senderJid).isEqualTo(SELF)
+        val conversation = rig.db.conversationDao().get(BOB)!!
+        assertThat(conversation.unreadCount).isEqualTo(0)
+        assertThat(conversation.lastMsgPreview).isEqualTo("PC 端发的")
+        assertThat(client.sentMessages).isEmpty()
+    }
+
+    /** 4.6：本人 PC 端收到李四的消息抄送过来 → 保存为收到的、计未读，但不由本端回执 */
+    @Test
+    fun carbonReceived_savedWithoutReceipt() = runTest {
+        val rig = rig()
+
+        client.receive(carbon("received", chat("in1", from = "$BOB/pc").replace("to='10001@im.example.com/android'", "to='$SELF/pc'")))
+        runCurrent()
+
+        val saved = rig.db.messageDao().get(BOB, "in1")!!
+        assertThat(saved.direction).isEqualTo(MessageEntity.DIRECTION_IN)
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(1)
+        assertThat(client.sentMessages).isEmpty()
+
+        // 之后本端又直接收到同一条（例如离线消息）：去重，但会回执
+        client.receive(chat("in1"))
+        runCurrent()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(1)
+        assertThat(client.sentMessages).hasSize(1)
+    }
+
+    /** 4.6：其他端收到的送达回执抄送过来：更新为已送达 */
+    @Test
+    fun carbonReceivedReceipt_marksDelivered() = runTest {
+        val rig = rig()
+        rig.outgoing("m1", MessageEntity.STATUS_SENT)
+
+        client.receive(carbon("received", "<message xmlns='jabber:client' id='rc' from='$BOB/pc' to='$SELF/pc'><received xmlns='urn:xmpp:receipts' id='m1'/></message>"))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "m1")!!.status).isEqualTo(MessageEntity.STATUS_DELIVERED)
+    }
+
+    /** 外层 from 不是本人：伪造的抄送，丢弃 */
+    @Test
+    fun spoofedCarbon_ignored() = runTest {
+        val rig = rig()
+
+        client.receive(
+            carbon(
+                "sent",
+                "<message xmlns='jabber:client' type='chat' id='fake' from='$SELF/pc' to='$BOB'><body>伪造</body></message>",
+                outerFrom = "$BOB/pc",
+            ),
+        )
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "fake")).isNull()
+    }
+
+    /** 文件传输助手：其他端发给本人 bare JID 的消息（直接收到或抄送），会话类型为 TYPE_SELF，按消息 ID 去重 */
+    @Test
+    fun fileTransferAssistant() = runTest {
+        val rig = rig()
+        val inner = "<message xmlns='jabber:client' type='chat' id='f1' from='$SELF/pc' to='$SELF'><body>传个文件</body>" +
+            "<request xmlns='urn:xmpp:receipts'/></message>"
+
+        client.receive(inner)
+        client.receive(carbon("sent", inner))
+        runCurrent()
+
+        val saved = rig.db.messageDao().get(SELF, "f1")!!
+        assertThat(saved.direction).isEqualTo(MessageEntity.DIRECTION_OUT)
+        val conversation = rig.db.conversationDao().get(SELF)!!
+        assertThat(conversation.type).isEqualTo(ConversationEntity.TYPE_SELF)
+        assertThat(conversation.unreadCount).isEqualTo(0)
+        // 不给自己回执
+        assertThat(client.sentMessages).isEmpty()
+    }
+
+    /** 本端发给文件传输助手的消息：发送后服务器路由回本端时按 ID 去重 */
+    @Test
+    fun ownMessageToSelf_echoDeduplicated() = runTest {
+        val rig = rig()
+
+        val sent = rig.repository.sendText(SELF, ConversationEntity.TYPE_SELF, "备忘")
+        runCurrent()
+        // 服务器把发给本人 bare JID 的消息也路由回本端
+        client.receive(client.sentMessages.single().replace("<message ", "<message from='$SELF/android' "))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().last(SELF)!!.rowId).isEqualTo(sent.rowId)
+        assertThat(rig.db.messageDao().get(SELF, sent.msgId)!!.status).isEqualTo(MessageEntity.STATUS_SENT)
+    }
+
     private companion object {
+        const val SELF = "10001@im.example.com"
         const val BOB = "10002@im.example.com"
     }
 }
