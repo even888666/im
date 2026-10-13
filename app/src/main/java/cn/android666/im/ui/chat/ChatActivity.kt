@@ -205,6 +205,7 @@ class ChatActivity : AppCompatActivity() {
                 binding.input.requestFocus()
             }
         }
+        collectWhenStarted(viewModel.watermark) { binding.watermark.text = it }
         collectWhenStarted(viewModel.peerTyping) { typing ->
             binding.toolbar.subtitle = if (typing) getString(R.string.chat_peer_typing) else null
         }

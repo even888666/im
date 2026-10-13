@@ -68,6 +68,10 @@ class ChatActivityTest {
                 toolbar = it.findViewById(R.id.toolbar)
             }
             waitUntil { toolbar.title == "李四" }
+            // 聊天水印：本人工号（组织架构中没有本人时只显示工号）
+            scenario.onActivity {
+                assertThat(it.findViewById<cn.android666.im.ui.widget.WatermarkView>(R.id.watermark).text).isEqualTo("10001")
+            }
 
             scenario.onActivity {
                 it.findViewById<EditText>(R.id.input).setText("你好，李四")

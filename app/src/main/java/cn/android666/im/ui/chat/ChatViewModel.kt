@@ -24,6 +24,7 @@ import cn.android666.im.data.message.canRetract
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.data.sync.HistoryLoader
 import cn.android666.im.ui.forward.ForwardTarget
+import cn.android666.im.ui.widget.WatermarkView
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -118,6 +120,12 @@ class ChatViewModel(
     private val chatStates: ChatStates? = null,
     private val titleFormatter: MergedTitleFormatter = MergedTitleFormatter.DEFAULT,
 ) : ViewModel() {
+
+    /** 聊天水印的文字："姓名 工号"（开发计划 4.18）；未登录时为 null */
+    val watermark: StateFlow<String?> = flow {
+        val self = messages.selfJid()
+        emit(self?.let { WatermarkView.label(org.employee(it)?.name, it.substringBefore('@')) })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
 
     /** 对方是否正在输入（单聊，标题栏下方显示"对方正在输入…"） */
     val peerTyping: StateFlow<Boolean> =
