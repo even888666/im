@@ -13,6 +13,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 开机自启（功能清单 §3） -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 保存图片到相册（开发计划 5.4）：Android 10 起通过 MediaStore 写入，不需要此权限 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <!--
         关闭备份（allowBackup=false，Android 12+ 另见 data_extraction_rules.xml）：
@@ -77,6 +81,12 @@
             android:name=".ui.forward.MergedMessageActivity"
             android:exported="false" />
 
+        <!-- 大图预览（开发计划 5.4） -->
+        <activity
+            android:name=".ui.media.ImagePreviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Im.Preview" />
+
         <!-- 聊天页（开发计划 4.8） -->
         <activity
             android:name=".ui.chat.ChatActivity"
@@ -105,6 +115,17 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- 拍照时把照片写入应用缓存目录（开发计划 5.4），见 res/xml/file_paths.xml -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- 日志库初始化：用本项目的 LogInitializer 替代库自带的 LogbackInitializer（见 日志库/日志库说明.md） -->
         <provider

@@ -21,6 +21,26 @@ class FileExpiredException(url: String) : IOException("文件已过期或被清�
 class ChecksumMismatchException(expected: String, actual: String) : IOException("文件校验失败：期望 $expected，实际 $actual")
 
 /**
+ * 文件下载的抽象（预览、文件消息使用，测试中替换为假实现）。
+ */
+interface Downloader {
+
+    /**
+     * 下载。
+     *
+     * @param url 下载地址
+     * @param target 目标文件（已存在时直接返回）
+     * @param sha256 期望的 SHA-256；为 null 时不校验
+     * @param onProgress 进度回调（已下载字节数、总字节数；总数未知时为 -1）
+     * @return 目标文件
+     * @throws FileExpiredException HTTP 404
+     * @throws ChecksumMismatchException 校验失败
+     * @throws IOException 其他网络 / 写文件错误
+     */
+    suspend fun download(url: String, target: File, sha256: String? = null, onProgress: (Long, Long) -> Unit = { _, _ -> }): File
+}
+
+/**
  * 文件下载（开发计划 5.3、5.6"断点续传"）：先写到 `{目标}.part`，完成并校验后改名为目标文件。
  *
  * - 已有未完成的 `.part` 时用 `Range` 续传；服务器不支持续传（返回 200）时从头下载；
@@ -30,7 +50,7 @@ class ChecksumMismatchException(expected: String, actual: String) : IOException(
  *
  * @property http HTTP 客户端（只信任企业根证书）
  */
-class FileDownloader(private val http: OkHttpClient) {
+class FileDownloader(private val http: OkHttpClient) : Downloader {
 
     private val log = Logs.file(TAG)
 
@@ -46,7 +66,7 @@ class FileDownloader(private val http: OkHttpClient) {
      * @throws ChecksumMismatchException 校验失败
      * @throws IOException 其他网络 / 写文件错误
      */
-    suspend fun download(url: String, target: File, sha256: String? = null, onProgress: (Long, Long) -> Unit = { _, _ -> }): File {
+    override suspend fun download(url: String, target: File, sha256: String?, onProgress: (Long, Long) -> Unit): File {
         if (target.exists()) return target
         target.parentFile?.mkdirs()
         val part = File(target.path + PART_SUFFIX)

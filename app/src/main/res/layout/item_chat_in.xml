@@ -47,6 +47,11 @@
             android:textIsSelectable="false"
             tools:text="你好，下午 3 点开会" />
 
+        <!-- 图片消息（开发计划 5.4）：显示时隐藏文字气泡 -->
+        <include
+            android:id="@+id/imageBox"
+            layout="@layout/view_chat_image" />
+
         <!-- 引用的原消息（开发计划 4.15） -->
         <TextView
             android:id="@+id/quote"

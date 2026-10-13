@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 大图预览（开发计划 5.4）：黑底全屏，可缩放；下方中间为加载状态，右下角为保存 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <cn.android666.im.ui.widget.ZoomImageView
+        android:id="@+id/image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/chat_image" />
+
+    <!-- 加载进度 / 已过期 / 失败（点击重试） -->
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="48dp"
+        android:background="@color/chat_image_scrim"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="@android:color/white"
+        android:visibility="gone"
+        tools:text="正在加载 30%"
+        tools:visibility="visible" />
+
+    <ImageButton
+        android:id="@+id/save"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="24dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/preview_save"
+        android:src="@drawable/ic_download"
+        android:visibility="gone"
+        app:tint="@android:color/white"
+        tools:visibility="visible" />
+</FrameLayout>

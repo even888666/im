@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 聊天页的图片消息（开发计划 5.4）：圆角缩略图；本人发出、上传中时叠加进度，上传失败时叠加提示 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:visibility="gone"
+    tools:visibility="visible">
+
+    <!-- 尺寸由代码按图片宽高设置（ImageSizing.displaySize） -->
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/image"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:background="?attr/colorSurfaceContainerHigh"
+        android:contentDescription="@string/chat_image"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.Im.ChatImage" />
+
+    <!-- 上传进度 -->
+    <TextView
+        android:id="@+id/progress"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/chat_image_scrim"
+        android:gravity="center"
+        android:textAppearance="?attr/textAppearanceTitleSmall"
+        android:textColor="@android:color/white"
+        android:visibility="gone"
+        tools:text="50%"
+        tools:visibility="visible" />
+</FrameLayout>

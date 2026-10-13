@@ -105,10 +105,19 @@
         android:background="?attr/colorSurfaceContainer"
         android:gravity="bottom"
         android:orientation="horizontal"
-        android:paddingStart="12dp"
+        android:paddingStart="4dp"
         android:paddingTop="6dp"
         android:paddingEnd="4dp"
         android:paddingBottom="6dp">
+
+        <!-- 更多：相册、拍照（开发计划 5.4） -->
+        <ImageButton
+            android:id="@+id/more"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/chat_more"
+            android:src="@drawable/ic_add_circle" />
 
         <EditText
             android:id="@+id/input"

@@ -4,23 +4,31 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
 import androidx.paging.PagingDataAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import cn.android666.im.R
+import cn.android666.im.core.media.ImageSizing
+import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.data.message.ChatMessage
 import cn.android666.im.data.message.MessageState
 import cn.android666.im.data.message.ReplyPreview
+import cn.android666.im.data.message.SendError
 import cn.android666.im.databinding.ItemChatInBinding
 import cn.android666.im.databinding.ItemChatNoticeBinding
 import cn.android666.im.databinding.ItemChatOutBinding
 import cn.android666.im.databinding.ItemChatTimeBinding
+import cn.android666.im.databinding.ViewChatImageBinding
 import cn.android666.im.ui.conversation.ConversationAdapter
 import cn.android666.im.ui.conversation.TimeLabel
+import coil3.dispose
+import coil3.load
+import java.io.File
 
 /**
  * 聊天页消息列表（开发计划 4.8）：时间分隔、对方的消息、本人的消息、系统提示（撤回）。
- * 非文本消息暂时显示降级文本（如"[图片]"），媒体消息的显示见 M5。
+ * 图片消息显示缩略图（5.4）；其余非文本消息暂时显示降级文本（如"[语音]"），见 M5 后续功能。
  *
  * @property showReadState 是否显示"未读 / 已读"（单聊显示；文件传输助手不显示；群聊的已读人数见 M6）
  * @property now 当前时间（毫秒），计算时间分隔的文字
@@ -28,7 +36,7 @@ import cn.android666.im.ui.conversation.TimeLabel
  * @property onLongClick 长按消息气泡（操作菜单）
  * @property selfJid 本人 bare JID（引用本人的消息时显示"我"）
  * @property onToggle 多选模式中点击消息（切换选中）
- * @property onOpen 点击消息气泡（合并转发的聊天记录等需要打开的消息）
+ * @property onOpen 点击消息气泡（合并转发的聊天记录、图片等需要打开的消息）
  */
 class ChatAdapter(
     private val showReadState: Boolean,
@@ -145,6 +153,7 @@ class ChatAdapter(
             if (selection == null) onLongClick(message)
             selection == null
         }
+        bindImage(b.imageBox, b.bubble, message)
         bindQuote(b.quote, message)
     }
 
@@ -163,6 +172,7 @@ class ChatAdapter(
             if (selection == null) onLongClick(message)
             selection == null
         }
+        bindImage(b.imageBox, b.bubble, message)
         bindQuote(b.quote, message)
         b.sending.isVisible = message.state == MessageState.SENDING
         b.failed.isVisible = message.state == MessageState.FAILED
@@ -211,6 +221,48 @@ class ChatAdapter(
     }
 
     /**
+     * 图片消息（开发计划 5.4）：隐藏文字气泡，按图片宽高显示缩略图；本人发出、上传中时显示进度，上传失败时提示。
+     * 点击查看大图（多选模式中为切换选中），长按弹出操作菜单。
+     *
+     * @param box 图片布局
+     * @param bubble 文字气泡
+     * @param message 消息
+     */
+    private fun bindImage(box: ViewChatImageBinding, bubble: android.view.View, message: ChatMessage) {
+        val image = message.content as? MessageContent.Image
+        box.root.isVisible = image != null
+        bubble.isVisible = image == null
+        if (image == null) {
+            box.image.dispose()
+            box.image.setImageDrawable(null)
+            return
+        }
+        val density = box.root.resources.displayMetrics.density
+        val size = ImageSizing.displaySize(
+            width = image.thumbnail?.width ?: image.file.width ?: 0,
+            height = image.thumbnail?.height ?: image.file.height ?: 0,
+            maxSide = (IMAGE_MAX_DP * density).toInt(),
+            minSide = (IMAGE_MIN_DP * density).toInt(),
+        )
+        box.image.updateLayoutParams {
+            width = size.width
+            height = size.height
+        }
+        box.image.load(imageModel(message, image))
+        val media = message.media
+        box.progress.isVisible = media != null && (media.uploading || media.failed)
+        when {
+            media?.uploading == true -> box.progress.text = box.root.context.getString(R.string.chat_upload_progress, media.progress)
+            media?.failed == true -> box.progress.setText(R.string.chat_upload_failed)
+        }
+        box.root.setOnClickListener { if (selection == null) onOpen(message) else onToggle(message) }
+        box.root.setOnLongClickListener {
+            if (selection == null) onLongClick(message)
+            selection == null
+        }
+    }
+
+    /**
      * 显示引用的原消息。
      *
      * @param view 引用预览
@@ -235,6 +287,26 @@ class ChatAdapter(
         /** 系统提示 */
         const val TYPE_NOTICE = 3
 
+        /** 图片消息的最大边长（dp） */
+        private const val IMAGE_MAX_DP = 150
+
+        /** 图片消息的最小边长（dp） */
+        private const val IMAGE_MIN_DP = 60
+
+        /**
+         * 图片消息显示的内容：本地缩略图（本人发出的）→ 缩略图地址 → 原图地址 → 本地原图（还没上传完时）。
+         *
+         * @param message 消息
+         * @param image 图片内容
+         * @return Coil 的加载对象（File 或 URL）；都没有时为 null
+         */
+        fun imageModel(message: ChatMessage, image: MessageContent.Image): Any? {
+            message.media?.thumbnailPath?.let(::File)?.takeIf { it.exists() }?.let { return it }
+            image.thumbnail?.url?.takeIf { it.isNotEmpty() }?.let { return it }
+            image.file.url.takeIf { it.isNotEmpty() }?.let { return it }
+            return message.media?.filePath?.let(::File)?.takeIf { it.exists() }
+        }
+
         /** 按 key 判断是否同一项 */
         private val DIFF = object : DiffUtil.ItemCallback<ChatListItem>() {
             override fun areItemsTheSame(oldItem: ChatListItem, newItem: ChatListItem) = oldItem.key == newItem.key
@@ -254,13 +326,22 @@ class ChatAdapter(
         }
 
         /**
-         * 发送失败的原因提示：只对需要用户知道原因的错误显示（敏感词，协议规范 §6.4）。
+         * 发送失败的原因提示：只对需要用户知道原因的错误显示（敏感词，协议规范 §6.4；附件上传失败、太大、文件已被清理，开发计划 5.4）。
          *
          * @param message 消息
          * @return 文字资源；不需要提示时为 null
          */
-        fun errorText(message: ChatMessage): Int? =
-            if (message.state == MessageState.FAILED && message.errorCode == "sensitive-word") R.string.chat_error_sensitive else null
+        fun errorText(message: ChatMessage): Int? = if (message.state != MessageState.FAILED) {
+            null
+        } else {
+            when (message.errorCode) {
+                "sensitive-word" -> R.string.chat_error_sensitive
+                SendError.UPLOAD_FAILED -> R.string.chat_error_upload
+                SendError.FILE_TOO_LARGE -> R.string.chat_error_file_too_large
+                SendError.FILE_MISSING -> R.string.chat_error_file_missing
+                else -> null
+            }
+        }
 
         /**
          * 引用预览的文字："李四：原文"、本人的消息"我：原文"、"原消息已撤回"、"原消息不可见"。

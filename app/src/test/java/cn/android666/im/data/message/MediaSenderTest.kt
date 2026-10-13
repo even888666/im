@@ -11,16 +11,14 @@ import cn.android666.im.core.database.UserDatabaseHolder
 import cn.android666.im.core.database.entity.ConversationEntity
 import cn.android666.im.core.database.entity.MediaFileEntity
 import cn.android666.im.core.database.entity.MessageEntity
-import cn.android666.im.core.media.ImageProcessor
-import cn.android666.im.core.media.PreparedImage
-import cn.android666.im.core.media.ProcessedImage
 import cn.android666.im.core.xmpp.Credential
 import cn.android666.im.core.xmpp.extension.msg.MessageCodec
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.data.file.FileTooLargeException
 import cn.android666.im.data.file.MediaCache
 import cn.android666.im.data.file.UploadFailedException
-import cn.android666.im.data.file.Uploader
+import cn.android666.im.testing.FakeImageProcessor
+import cn.android666.im.testing.FakeUploader
 import cn.android666.im.testing.FakeXmppClient
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CompletableDeferred
@@ -57,55 +55,6 @@ class MediaSenderTest {
         override fun roomId() = "g1"
         override fun callId() = "c1"
         override fun uuid() = "u1"
-    }
-
-    /**
-     * 假的上传：按文件名返回下载地址；可以让某次上传挂起或失败。
-     */
-    private class FakeUploader : Uploader {
-        /** 上传上限 */
-        var limit: Long? = 10_000_000
-
-        /** 已上传的文件名（按顺序） */
-        val uploaded = mutableListOf<String>()
-
-        /** 按文件名指定的行为：挂起直到完成，或抛出异常 */
-        val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
-
-        /** 下一次（任意文件）上传时抛出的异常 */
-        val failures = ArrayDeque<Exception>()
-
-        /** 上传前报告的进度（百分比） */
-        var progressBeforeGate = 0
-
-        override fun uploadLimit(): Long? = limit
-
-        override suspend fun upload(file: File, originalName: String, mime: String, onProgress: (Long, Long) -> Unit): String {
-            failures.removeFirstOrNull()?.let { throw it }
-            gates[file.name]?.let { gate ->
-                onProgress(progressBeforeGate.toLong(), 100)
-                gate.await()
-            }
-            onProgress(100, 100)
-            uploaded += file.name
-            return "https://im.example.com/upload/${file.name}"
-        }
-    }
-
-    /** 假的图片处理：主图与缩略图都是小文件，尺寸固定 */
-    private class FakeImages : ImageProcessor {
-        override fun prepare(source: File, outDir: File, original: Boolean): PreparedImage {
-            outDir.mkdirs()
-            val main = File(outDir, "img${++count}.jpg").apply { writeBytes(ByteArray(MAIN_SIZE)) }
-            val thumb = File(outDir, "img${count}_thumb.jpg").apply { writeBytes(ByteArray(100)) }
-            return PreparedImage(
-                main = ProcessedImage(main, 1920, 1080, "image/jpeg"),
-                thumbnail = ProcessedImage(thumb, 320, 180, "image/jpeg"),
-                original = original,
-            )
-        }
-
-        private var count = 0
     }
 
     private val uploader = FakeUploader()
@@ -154,7 +103,7 @@ class MediaSenderTest {
         val queue = SendQueue(client, newHolder, backgroundScope, clock)
         val repository = MessageRepository(newHolder, queue, ServerClock(clock), ids) { "10001@im.example.com" }
         val sender = MediaSender(
-            client, newHolder, repository, uploader, FakeImages(),
+            client, newHolder, repository, uploader, FakeImageProcessor(),
             workDir = { workDir }, cache = { MediaCache(cacheDir) }, scope = backgroundScope, io = dispatcher,
         )
         runCurrent()
@@ -186,7 +135,7 @@ class MediaSenderTest {
         val draft = MessageJson.decodeContent(saved.type, saved.contentJson) as MessageContent.Image
         assertThat(draft.file.url).isEmpty()
         assertThat(draft.file.name).isEqualTo("照片.jpg")
-        assertThat(draft.file.size).isEqualTo(MAIN_SIZE.toLong())
+        assertThat(draft.file.size).isEqualTo(FakeImageProcessor.MAIN_SIZE.toLong())
         runCurrent()
 
         assertThat(uploader.uploaded).containsExactly("img1_thumb.jpg", "img1.jpg").inOrder()
@@ -288,7 +237,7 @@ class MediaSenderTest {
     @Test
     fun tooLarge_throwsWithoutMessage() = runTest {
         val rig = rig()
-        uploader.limit = MAIN_SIZE - 1L
+        uploader.limit = FakeImageProcessor.MAIN_SIZE - 1L
 
         val error = runCatching { rig.sendImage() }.exceptionOrNull()
         assertThat(error).isInstanceOf(FileTooLargeException::class.java)
@@ -406,8 +355,5 @@ class MediaSenderTest {
     private companion object {
         const val BOB = "10002@im.example.com"
         const val CAROL = "10003@im.example.com"
-
-        /** 假主图的大小 */
-        const val MAIN_SIZE = 2000
     }
 }

@@ -18,4 +18,18 @@
         <item name="android:textAppearance">?attr/textAppearanceBodyLarge</item>
         <item name="drawableTint">?attr/colorControlNormal</item>
     </style>
+
+    <!-- 聊天页图片消息的圆角（开发计划 5.4） -->
+    <style name="ShapeAppearance.Im.ChatImage" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">8dp</item>
+    </style>
+
+    <!-- 图片预览页：全屏黑底（开发计划 5.4） -->
+    <style name="Theme.Im.Preview" parent="Theme.Im">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

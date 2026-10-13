@@ -4,13 +4,20 @@ import android.os.Looper
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import cn.android666.im.App
 import cn.android666.im.R
 import cn.android666.im.core.database.entity.EmployeeEntity
+import cn.android666.im.core.database.entity.MessageEntity
+import cn.android666.im.core.xmpp.extension.msg.FileInfo
+import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.core.xmpp.extension.msg.ThumbnailInfo
 import cn.android666.im.data.conversation.ConversationKind
+import cn.android666.im.data.message.MessageJson
+import cn.android666.im.ui.media.ImagePreviewActivity
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -114,6 +121,41 @@ class ChatActivityTest {
             lateinit var toolbar: Toolbar
             scenario.onActivity { toolbar = it.findViewById(R.id.toolbar) }
             waitUntil { toolbar.title == app.getString(R.string.conversation_self) }
+        }
+    }
+
+    /** 5.4 收到的图片：显示缩略图（隐藏文字气泡），点击打开大图预览 */
+    @Test
+    fun imageMessage_shownAndOpensPreview() {
+        runBlocking {
+            val content = MessageContent.Image(
+                FileInfo("https://im.example.com/upload/a.jpg", "a.jpg", 100, "image/jpeg", width = 1920, height = 1080),
+                ThumbnailInfo("https://im.example.com/upload/a_thumb.jpg", 320, 180, "image/jpeg"),
+            )
+            app.container.userDatabaseHolder.require().messageDao().insert(
+                MessageEntity(
+                    msgId = "img", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "image",
+                    body = "[图片]", contentJson = MessageJson.encodeContent(content), status = MessageEntity.STATUS_RECEIVED, serverTime = 1,
+                ),
+            )
+        }
+        val intent = ChatActivity.intent(app, BOB, ConversationKind.SINGLE)
+        ActivityScenario.launch<ChatActivity>(intent).use { scenario ->
+            lateinit var list: RecyclerView
+            scenario.onActivity { list = it.findViewById(R.id.list) }
+            waitUntil { list.findViewHolderForAdapterPosition(0)?.itemView?.findViewById<android.view.View>(R.id.imageBox)?.isVisible == true }
+            scenario.onActivity { activity ->
+                val item = list.findViewHolderForAdapterPosition(0)!!.itemView
+                assertThat(item.findViewById<TextView>(R.id.bubble).isVisible).isFalse()
+                // 横图：宽为最大边长 150dp
+                val density = activity.resources.displayMetrics.density
+                assertThat(item.findViewById<android.view.View>(R.id.image).layoutParams.width).isEqualTo((150 * density).toInt())
+                item.findViewById<android.view.View>(R.id.imageBox).performClick()
+                val started = shadowOf(activity).nextStartedActivity
+                assertThat(started.component!!.className).isEqualTo(ImagePreviewActivity::class.java.name)
+                assertThat(started.getStringExtra("url")).isEqualTo("https://im.example.com/upload/a.jpg")
+                assertThat(started.getStringExtra("thumbnail")).isEqualTo("https://im.example.com/upload/a_thumb.jpg")
+            }
         }
     }
 

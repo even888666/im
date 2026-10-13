@@ -1,16 +1,22 @@
 package cn.android666.im.ui.chat
 
 import android.content.ClipData
+import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
@@ -21,6 +27,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import cn.android666.im.R
 import cn.android666.im.core.log.Logs
+import cn.android666.im.core.media.UriImporter
+import cn.android666.im.data.message.ChatMessage
 import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.databinding.ActivityChatBinding
 import cn.android666.im.ui.base.MessageDialogFragment
@@ -30,7 +38,14 @@ import cn.android666.im.ui.base.collectWhenStarted
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.ui.forward.ForwardTargetActivity
 import cn.android666.im.ui.forward.MergedMessageActivity
+import cn.android666.im.ui.media.ImagePreviewActivity
+import cn.android666.im.ui.media.PreviewImage
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 聊天页（开发计划 4.8）：单聊、文件传输助手（群聊见 M6）。
@@ -61,6 +76,8 @@ class ChatActivity : AppCompatActivity() {
                         override fun pair(self: String, peer: String) = getString(R.string.forward_merged_title, self, peer)
                         override fun selfOnly(self: String) = getString(R.string.forward_merged_title_self, self)
                     },
+                    media = container.mediaSender,
+                    importer = UriImporter(applicationContext, File(cacheDir, IMPORT_DIR), container.dispatchers.io),
                 )
             }
         }
@@ -111,7 +128,7 @@ class ChatActivity : AppCompatActivity() {
             },
             selfJid = appContainer.selfJid(),
             onToggle = { viewModel.toggleSelection(it.rowId) },
-            onOpen = { message -> (message.content as? MessageContent.Merged)?.let { MergedMessageActivity.start(this, it) } },
+            onOpen = ::open,
         )
         val layoutManager = LinearLayoutManager(this).apply { reverseLayout = true }
         binding.list.layoutManager = layoutManager
@@ -217,7 +234,102 @@ class ChatActivity : AppCompatActivity() {
                     binding.list.scrollToPosition(0)
                 }
                 is ChatEvent.Toast -> Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show()
+                is ChatEvent.FileTooLarge ->
+                    Toast.makeText(this, getString(R.string.chat_file_too_large, event.maxBytes / BYTES_PER_MB), Toast.LENGTH_SHORT).show()
             }
+        }
+        pendingPhoto = savedInstanceState?.getString(STATE_PHOTO)?.let(::File)
+        binding.more.setOnClickListener { showMoreMenu() }
+    }
+
+    /** 拍照时照片的保存位置（相机应用返回前页面可能被销毁重建，保存在 savedInstanceState 中） */
+    private var pendingPhoto: File? = null
+
+    /** 从相册选择图片（最多 [MAX_PICK] 张） */
+    private val pickImages = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
+        if (uris.isNotEmpty()) confirmSendImages(uris)
+    }
+
+    /** 拍照 */
+    private val takePhoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val file = pendingPhoto
+        pendingPhoto = null
+        if (file == null) return@registerForActivityResult
+        if (saved && file.length() > 0) {
+            val name = "IMG_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT).format(Date()) + ".jpg"
+            viewModel.sendPhoto(file, name)
+        } else {
+            file.delete()
+        }
+    }
+
+    /** 输入栏的"更多"菜单：相册、拍照 */
+    private fun showMoreMenu() {
+        PopupMenu(this, binding.more).apply {
+            menu.add(0, MENU_ALBUM, 0, R.string.chat_pick_album)
+            menu.add(0, MENU_CAMERA, 1, R.string.chat_take_photo)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    MENU_ALBUM -> pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    MENU_CAMERA -> launchCamera()
+                }
+                true
+            }
+        }.show()
+    }
+
+    /** 打开相机应用拍照，照片写入缓存目录 */
+    private fun launchCamera() {
+        val dir = File(cacheDir, CAMERA_DIR).apply { mkdirs() }
+        val file = File(dir, "${System.currentTimeMillis()}.jpg")
+        pendingPhoto = file
+        try {
+            takePhoto.launch(FileProvider.getUriForFile(this, "$packageName.files", file))
+        } catch (e: ActivityNotFoundException) {
+            log.warn("没有相机应用", e)
+            pendingPhoto = null
+            Toast.makeText(this, R.string.chat_no_camera, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 确认发送选中的图片，可选择"发送原图"。
+     *
+     * @param uris 图片
+     */
+    private fun confirmSendImages(uris: List<Uri>) {
+        val original = booleanArrayOf(false)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.chat_send_images_title, uris.size))
+            .setMultiChoiceItems(arrayOf(getString(R.string.chat_send_original)), original) { _, _, checked -> original[0] = checked }
+            .setPositiveButton(R.string.chat_send) { _, _ -> viewModel.sendImages(uris, original[0]) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * 点击消息：合并转发打开聊天记录，图片打开大图预览。
+     *
+     * @param message 消息
+     */
+    private fun open(message: ChatMessage) {
+        when (val content = message.content) {
+            is MessageContent.Merged -> MergedMessageActivity.start(this, content)
+            is MessageContent.Image -> startActivity(
+                ImagePreviewActivity.intent(
+                    this,
+                    PreviewImage(
+                        url = content.file.url,
+                        name = content.file.name,
+                        mime = content.file.mime,
+                        sha256 = content.file.sha256,
+                        localPath = message.media?.filePath,
+                        thumbnail = message.media?.thumbnailPath?.takeIf { File(it).exists() }
+                            ?: content.thumbnail?.url?.takeIf { it.isNotEmpty() },
+                    ),
+                ),
+            )
+            else -> Unit
         }
     }
 
@@ -301,6 +413,7 @@ class ChatActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         pendingResendRowId?.let { outState.putLong(STATE_RESEND, it) }
+        pendingPhoto?.let { outState.putString(STATE_PHOTO, it.path) }
     }
 
     companion object {
@@ -308,6 +421,25 @@ class ChatActivity : AppCompatActivity() {
         private const val EXTRA_ID = "conversationId"
         private const val EXTRA_KIND = "kind"
         private const val STATE_RESEND = "pendingResend"
+        private const val STATE_PHOTO = "pendingPhoto"
+
+        /** 从相册一次最多选择的图片数 */
+        private const val MAX_PICK = 9
+
+        /** "更多"菜单：相册 */
+        private const val MENU_ALBUM = 1
+
+        /** "更多"菜单：拍照 */
+        private const val MENU_CAMERA = 2
+
+        /** 导入的图片副本目录（缓存目录下） */
+        private const val IMPORT_DIR = "import"
+
+        /** 拍照的照片目录（缓存目录下，与 res/xml/file_paths.xml 一致） */
+        private const val CAMERA_DIR = "camera"
+
+        /** 1 MB */
+        private const val BYTES_PER_MB = 1024 * 1024
 
         /** 重发确认框的结果 key */
         private const val REQUEST_RESEND = "resend"

@@ -1,5 +1,6 @@
 package cn.android666.im.ui.chat
 
+import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,9 @@ import androidx.paging.insertSeparators
 import androidx.paging.map
 import cn.android666.im.R
 import cn.android666.im.core.log.Logs
+import cn.android666.im.core.media.MediaImporter
+import cn.android666.im.data.file.FileTooLargeException
+import cn.android666.im.data.message.MediaSender
 import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.conversation.toEntityType
@@ -39,6 +43,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.IOException
 
 /** 聊天页的一次性事件 */
 sealed interface ChatEvent {
@@ -51,6 +57,13 @@ sealed interface ChatEvent {
      * @property message 提示文字
      */
     data class Toast(@param:StringRes val message: Int) : ChatEvent
+
+    /**
+     * 文件超过服务器的上传上限（开发计划 5.4）。
+     *
+     * @property maxBytes 上限（字节）
+     */
+    data class FileTooLarge(val maxBytes: Long) : ChatEvent
 }
 
 /**
@@ -107,6 +120,8 @@ interface MergedTitleFormatter {
  * @param history 从服务器加载更早历史（开发计划 4.11）；null 表示只显示本地消息
  * @property chatStates 正在输入状态（开发计划 4.14，仅单聊）；null 时不发送也不显示
  * @property titleFormatter 合并转发标题的格式（字符串资源由界面提供）
+ * @property media 媒体消息发送（开发计划 5.4）；null 时不能发图片，重发直接交给消息仓库
+ * @property importer 把相册等返回的 Uri 复制到本地
  */
 class ChatViewModel(
     val conversationId: String,
@@ -119,6 +134,8 @@ class ChatViewModel(
     history: HistoryLoader? = null,
     private val chatStates: ChatStates? = null,
     private val titleFormatter: MergedTitleFormatter = MergedTitleFormatter.DEFAULT,
+    private val media: MediaSender? = null,
+    private val importer: MediaImporter? = null,
 ) : ViewModel() {
 
     /** 聊天水印的文字："姓名 工号"（开发计划 4.18）；未登录时为 null */
@@ -399,6 +416,77 @@ class ChatViewModel(
     }
 
     /**
+     * 发送相册中选择的图片（开发计划 5.4）：按选择顺序逐张导入、压缩并发送；某张失败时提示并继续发送其余的。
+     *
+     * @param uris 图片地址
+     * @param original 是否发送原图
+     */
+    fun sendImages(uris: List<Uri>, original: Boolean) {
+        val sender = media ?: return
+        val imports = importer ?: return
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            log.info("发送图片：{} 张，原图={}，会话={}", uris.size, original, conversationId)
+            for (uri in uris) {
+                val imported = try {
+                    imports.import(uri)
+                } catch (e: IOException) {
+                    log.warn("图片导入失败：{}", e.toString())
+                    eventChannel.send(ChatEvent.Toast(R.string.chat_image_invalid))
+                    continue
+                }
+                try {
+                    sendImageFile(sender, imported.file, imported.displayName, original)
+                } finally {
+                    imported.file.delete()
+                }
+            }
+        }
+    }
+
+    /**
+     * 发送拍摄的照片（压缩发送，不发原图）。
+     *
+     * @param file 照片文件（发送后删除）
+     * @param displayName 文件名
+     */
+    fun sendPhoto(file: File, displayName: String) {
+        val sender = media ?: return
+        viewModelScope.launch {
+            try {
+                sendImageFile(sender, file, displayName, original = false)
+            } finally {
+                file.delete()
+            }
+        }
+    }
+
+    /**
+     * 发送一张本地图片，出错时提示。
+     *
+     * @param sender 媒体消息发送
+     * @param file 图片
+     * @param displayName 原始文件名
+     * @param original 是否原图
+     */
+    private suspend fun sendImageFile(sender: MediaSender, file: File, displayName: String?, original: Boolean) {
+        try {
+            // 不发 ChatEvent.Sent：输入框中可能还有没发的文字
+            sender.sendImage(conversationId, kind.toEntityType(), file, displayName, original)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: FileTooLargeException) {
+            eventChannel.send(ChatEvent.FileTooLarge(e.maxSize))
+        } catch (e: IOException) {
+            log.warn("图片无法读取：{}", e.toString())
+            eventChannel.send(ChatEvent.Toast(R.string.chat_image_invalid))
+        } catch (e: Exception) {
+            log.error("图片发送出错：会话={}", conversationId, e)
+            eventChannel.send(ChatEvent.Toast(R.string.chat_send_error))
+        }
+    }
+
+    /**
      * 重发一条发送失败的消息。
      *
      * @param rowId 消息 rowId
@@ -406,7 +494,8 @@ class ChatViewModel(
     fun resend(rowId: Long) {
         viewModelScope.launch {
             try {
-                messages.resend(rowId)
+                // 媒体消息可能是附件没传完，由 MediaSender 判断重传附件还是只重发消息
+                if (media != null) media.resend(rowId) else messages.resend(rowId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
