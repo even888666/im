@@ -1,0 +1,4 @@
+# 部署配置（含密码）
+.env
+# 下载的 Openfire 安装包与插件
+docker/openfire/dist/

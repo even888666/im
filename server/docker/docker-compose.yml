@@ -1,0 +1,67 @@
+# IM 服务端：Openfire + PostgreSQL（coturn 见 1.6）。
+# 不要直接 docker compose up，请使用 server/up.sh（会先生成证书、下载安装包、准备 .env）。
+
+name: im-server
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: openfire
+      POSTGRES_USER: openfire
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?需要 POSTGRES_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      # PostgreSQL 18 起镜像的数据目录位于 /var/lib/postgresql 下的版本子目录，挂载上级目录
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openfire -d openfire"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  openfire:
+    build:
+      context: ./openfire
+      args:
+        OPENFIRE_BASE_IMAGE: ${OPENFIRE_BASE_IMAGE}
+    image: im-openfire:${OPENFIRE_VERSION}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      IM_ENV: ${IM_ENV:-prod}
+      IM_DOMAIN: ${IM_DOMAIN:?需要 IM_DOMAIN}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      OPENFIRE_ADMIN_PASSWORD: ${OPENFIRE_ADMIN_PASSWORD:?需要 OPENFIRE_ADMIN_PASSWORD}
+      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:-}
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:5222:5222"
+      - "${BIND_ADDRESS:-0.0.0.0}:7443:7443"
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:9091:9091"
+    volumes:
+      # 证书只读挂载，更新证书后重启容器生效
+      - ../certs/out:/certs:ro
+      # conf 保存安装状态（<setup>true</setup>），必须持久化
+      - openfire-conf:/opt/openfire/conf
+      - openfire-logs:/opt/openfire/logs
+      - openfire-upload:/var/lib/openfire/upload
+    # 1 万长连接需要调大文件句柄上限（功能清单 §18.2）；不能超过宿主机允许的上限（见 .env 中 OPENFIRE_NOFILE）
+    ulimits:
+      nofile:
+        soft: ${OPENFIRE_NOFILE:-65536}
+        hard: ${OPENFIRE_NOFILE:-65536}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/5222'"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  openfire-conf:
+  openfire-logs:
+  openfire-upload:

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Openfire 引导配置模板，由 entrypoint.sh 在首次启动时替换 @变量@ 后写入 conf/openfire.xml。
+
+    autosetup 让 Openfire 首次启动时自动完成安装向导（数据库、域名、管理员、测试账号），无需人工操作。
+    安装完成后 Openfire 会在 conf/openfire.xml 中写入 setup 标记（保存在数据卷中），之后不再执行。
+    注意：本注释中不能出现 setup 标记的原文，entrypoint.sh 靠搜索它判断是否已安装。
+
+    系统属性（TLS 策略、SASL 机制等）不写在这里，统一由 server/config/openfire-properties.conf
+    经 server/scripts/apply-properties.sh 写入数据库，这样对已部署的服务器修改配置也能生效。
+-->
+<jive>
+    <adminConsole>
+        <!-- 只开放 HTTPS 管理后台，HTTP 端口禁用 -->
+        <port>-1</port>
+        <securePort>9091</securePort>
+    </adminConsole>
+
+    <locale>zh_CN</locale>
+
+    <connectionProvider>
+        <className>org.jivesoftware.database.DefaultConnectionProvider</className>
+    </connectionProvider>
+
+    <autosetup>
+        <run>true</run>
+        <locale>zh_CN</locale>
+        <xmpp>
+            <domain>@IM_DOMAIN@</domain>
+            <fqdn>@IM_DOMAIN@</fqdn>
+            <auth>
+                <anonymous>false</anonymous>
+            </auth>
+        </xmpp>
+        <database>
+            <mode>standard</mode>
+            <defaultProvider>
+                <driver>org.postgresql.Driver</driver>
+                <serverURL>jdbc:postgresql://postgres:5432/openfire</serverURL>
+                <username>openfire</username>
+                <password>@POSTGRES_PASSWORD@</password>
+                <minConnections>5</minConnections>
+                <!-- 1 万人规模，同时在线连接多，连接池适当放大（功能清单 §18.2） -->
+                <maxConnections>50</maxConnections>
+                <connectionTimeout>1.0</connectionTimeout>
+            </defaultProvider>
+        </database>
+        <admin>
+            <email>admin@@IM_DOMAIN@</email>
+            <password>@OPENFIRE_ADMIN_PASSWORD@</password>
+        </admin>
+        <!-- default 模式下 Openfire 只保存 SCRAM 哈希（user.scramHashedPasswordOnly=true），不保存明文密码 -->
+        <authprovider>
+            <mode>default</mode>
+        </authprovider>
+@USERS_BLOCK@
+    </autosetup>
+</jive>
