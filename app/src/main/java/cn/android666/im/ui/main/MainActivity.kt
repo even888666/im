@@ -1,10 +1,15 @@
 package cn.android666.im.ui.main
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.IdRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import cn.android666.im.R
@@ -32,6 +37,11 @@ class MainActivity : AppCompatActivity() {
     private val viewModel by appViewModels(::createViewModel)
 
     private lateinit var binding: ActivityMainBinding
+
+    /** Android 13 起发通知需要用户授权（新消息通知，开发计划 4.13） */
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        log.info("通知权限：{}", if (granted) "已授权" else "被拒绝")
+    }
 
     /**
      * 创建页面。
@@ -75,6 +85,7 @@ class MainActivity : AppCompatActivity() {
             text?.let(binding.bannerText::setText)
         }
         collectWhenStarted(viewModel.events, ::onEvent)
+        if (savedInstanceState == null) requestNotificationPermission()
         // "消息" Tab 的总未读数角标（功能清单 §10）
         collectWhenStarted(viewModel.totalUnread) { count ->
             if (count > 0) {
@@ -83,6 +94,16 @@ class MainActivity : AppCompatActivity() {
                 binding.bottomNav.removeBadge(R.id.tab_messages)
             }
         }
+    }
+
+    /**
+     * 请求通知权限（Android 13+ 且尚未授权时）。用户拒绝两次后系统不再弹出，可在系统设置中开启。
+     */
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        log.info("请求通知权限")
+        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /**

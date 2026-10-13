@@ -29,8 +29,14 @@ class AppVisibilityHandler(
 
     private val log = Logs.file(TAG)
 
+    /** App 是否在前台（有 Activity 可见）；启动时为 false，第一个 Activity 显示后变为 true */
+    @Volatile
+    var isForeground: Boolean = false
+        private set
+
     /** App 回到前台 */
     fun onForeground() {
+        isForeground = true
         log.info("App 回到前台")
         connectionManager.reconnectNow()
         scope.launch {
@@ -49,6 +55,7 @@ class AppVisibilityHandler(
 
     /** App 进入后台 */
     fun onBackground() {
+        isForeground = false
         log.info("App 进入后台")
         scope.launch { client.setActive(false) }
     }

@@ -111,6 +111,12 @@
     <string name="conversation_action_mark_read">标为已读</string>
     <string name="conversation_delete_confirm">删除后，将清空该会话的本地聊天记录</string>
     <string name="conversation_delete">删除</string>
+    <!-- 新消息通知（开发计划 4.13） -->
+    <string name="notification_me">我</string>
+    <plurals name="notification_public_text">
+        <item quantity="other">收到 %d 条新消息</item>
+    </plurals>
+
     <!-- 聊天页（开发计划 4.8） -->
     <string name="chat_input_hint">发消息</string>
     <string name="chat_send">发送</string>

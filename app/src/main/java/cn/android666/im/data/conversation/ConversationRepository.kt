@@ -99,6 +99,27 @@ class ConversationRepository(private val databases: UserDatabaseHolder) {
     }
 
     /**
+     * 查询一个会话（通知判断免打扰等）。
+     *
+     * @param id 会话 ID
+     * @return 会话；不存在或未登录时为 null
+     */
+    suspend fun get(id: String): ConversationItem? {
+        val db = databases.database.value ?: return null
+        val entity = db.conversationDao().get(id) ?: return null
+        return ConversationWithPeer(entity, db.employeeDao().get(id), null, null).toItem()
+    }
+
+    /**
+     * 各会话的未读数（通知在会话已读后取消）。未登录时为空。
+     *
+     * @return 持续更新的"会话 ID → 未读数"
+     */
+    fun observeUnreadCounts(): Flow<Map<String, Int>> = databases.database.flatMapLatest { db ->
+        db?.conversationDao()?.observeAll()?.map { list -> list.associate { it.id to it.unreadCount } } ?: flowOf(emptyMap())
+    }
+
+    /**
      * 删除会话及其本地消息（决策记录 A86）。服务器存档中的消息不受影响。
      *
      * @param id 会话 ID

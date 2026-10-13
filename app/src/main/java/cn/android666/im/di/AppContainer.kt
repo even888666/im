@@ -1,6 +1,7 @@
 package cn.android666.im.di
 
 import android.content.Context
+import android.content.Intent
 import cn.android666.im.BuildConfig
 import cn.android666.im.core.database.UserDatabaseHolder
 import cn.android666.im.core.datastore.settingsDataStore
@@ -29,6 +30,9 @@ import cn.android666.im.data.org.OrgSyncStep
 import cn.android666.im.data.settings.AppSettingsStore
 import cn.android666.im.data.session.AppVisibilityHandler
 import cn.android666.im.data.session.SessionManager
+import cn.android666.im.service.notification.MessageNotifier
+import cn.android666.im.ui.chat.ChatActivity
+import cn.android666.im.ui.main.MainActivity
 import cn.android666.im.data.session.steps.AccountStatusStep
 import cn.android666.im.data.session.steps.CapabilitiesStep
 import cn.android666.im.data.session.steps.EnableCarbonsStep
@@ -143,6 +147,8 @@ class AppContainer(context: Context) {
                 sendQueue.wake()
                 // 确保已订阅收到的消息：发送初始 presence 后服务器立即投递离线消息
                 incomingMessageHandler
+                // 确保已订阅新消息（通知）
+                messageNotifier
             },
             steps = listOf(
                 EnableCarbonsStep(xmppClient),
@@ -209,6 +215,19 @@ class AppContainer(context: Context) {
     /** 收到的消息的分发：去重写库、回执、已读 */
     val incomingMessageHandler: IncomingMessageHandler by lazy {
         IncomingMessageHandler(xmppClient, messageRepository, readMarkers, retractions, serverClock, idGenerator, selfJid, applicationScope)
+    }
+
+    /** 新消息通知（创建时开始订阅新消息） */
+    val messageNotifier: MessageNotifier by lazy {
+        MessageNotifier(
+            context = appContext,
+            conversations = conversationRepository,
+            senderName = { jid -> orgRepository.employee(jid)?.name },
+            isForeground = { appVisibilityHandler.isForeground },
+            activeConversation = { messageRepository.activeConversationId() },
+            mainIntent = { Intent(appContext, MainActivity::class.java) },
+            chatIntent = { id, kind -> ChatActivity.intent(appContext, id, kind) },
+        ).also { it.start(incomingMessageHandler.newMessages, conversationRepository.observeUnreadCounts(), applicationScope) }
     }
 
     /** 撤回 */
