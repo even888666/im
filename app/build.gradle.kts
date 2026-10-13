@@ -90,3 +90,11 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }
+
+// kotlinx-coroutines-test 的虚拟时间 API（advanceTimeBy、currentTime 等）都标记为实验性，
+// 只对单元测试的编译统一开启 opt-in，避免每个测试类重复写注解；生产代码不受影响
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    if (name.contains("UnitTest")) {
+        compilerOptions.optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+}
