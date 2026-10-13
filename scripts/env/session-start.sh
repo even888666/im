@@ -22,6 +22,10 @@ mkdir -p "$HOME/.gradle/init.d"
 cp "$PROJECT_DIR/scripts/env/gradle-init/cloud-maven-mirror.init.gradle.kts" "$HOME/.gradle/init.d/"
 log "已安装 Gradle Maven Central 镜像初始化脚本"
 
+# 2.5 开发环境根证书：App 构建时要把根证书打包进 res/raw（见 app/certs/README.md），
+#     必须在下面预热 Gradle 之前生成；后台的 server/up.sh 也会用到同一个根证书（已存在时跳过）
+bash "$PROJECT_DIR/server/certs/gen-ca.sh"
+
 # 3. Docker 守护进程：容器里没有 systemd 托管，未运行时手动在后台拉起
 if ! docker info >/dev/null 2>&1; then
   log "启动 Docker 守护进程…"

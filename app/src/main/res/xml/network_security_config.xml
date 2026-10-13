@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    网络安全配置（功能清单 §18.2）：
+    - 只信任企业根证书（res/raw/im_root_ca，构建时打包，见 app/build.gradle.kts 的 prepareRootCa 任务）；
+    - 不信任系统内置 CA、不信任用户手动安装的证书：终端走企业专网，所有服务器证书都由企业根证书签发；
+    - 禁止明文 HTTP。
+    代码中的 Smack、OkHttp 通过 core.security.RootCaTrust 使用同一个根证书，二者的信任范围保持一致。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="@raw/im_root_ca" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

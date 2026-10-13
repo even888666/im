@@ -4,6 +4,61 @@ plugins {
 }
 
 /**
+ * 把企业根证书复制为生成资源 `res/raw/im_root_ca.crt`，供 network_security_config 和
+ * core.security.RootCaTrust 使用（功能清单 §18.2）。候选来源在配置阶段确定（见 [rootCaCandidates]），
+ * 取第一个存在的文件；都不存在时报错。
+ */
+abstract class PrepareRootCaTask : DefaultTask() {
+
+    /** 存在的候选根证书文件，按优先级排列 */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.ABSOLUTE)
+    abstract val candidates: ConfigurableFileCollection
+
+    /** 生成的资源目录（其下的 raw/im_root_ca.crt） */
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val source = candidates.files.firstOrNull()
+            ?: throw GradleException(
+                "未找到企业根证书。请把公司根证书放到 app/certs/im_root_ca.crt，" +
+                    "或用 -Pim.rootCa=路径 指定，开发环境可先运行 server/certs/gen-ca.sh（见 app/certs/README.md）",
+            )
+        val text = source.readText()
+        if (!text.contains("-----BEGIN CERTIFICATE-----")) {
+            throw GradleException("${source.path} 不是 PEM 格式的证书")
+        }
+        if (text.contains("PRIVATE KEY")) {
+            throw GradleException("${source.path} 中包含私钥，App 只能打包证书，绝不能打包私钥")
+        }
+        val target = outputDir.file("raw/im_root_ca.crt").get().asFile
+        target.parentFile.mkdirs()
+        source.copyTo(target, overwrite = true)
+        logger.lifecycle("企业根证书：${source.path}")
+    }
+}
+
+/** 根证书候选来源，按优先级：-Pim.rootCa、app/certs/im_root_ca.crt（公司正式）、server/certs/out/ca.crt（开发） */
+val rootCaCandidates: List<File> = listOfNotNull(
+    providers.gradleProperty("im.rootCa").orNull?.let { file(it) },
+    file("certs/im_root_ca.crt"),
+    rootProject.file("server/certs/out/ca.crt"),
+).filter { it.exists() }
+
+val prepareRootCa = tasks.register<PrepareRootCaTask>("prepareRootCa") {
+    candidates.from(rootCaCandidates)
+    outputDir.set(layout.buildDirectory.dir("generated/rootCa/res"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.res?.addGeneratedSourceDirectory(prepareRootCa, PrepareRootCaTask::outputDir)
+    }
+}
+
+/**
  * 集成测试（IT）开关：传入 `-Pim.it=true` 时，连接本地 Openfire 的集成测试才会运行，
  * 默认跳过，避免普通构建依赖服务器（见 开发计划.md §0.2）。
  */
