@@ -4,12 +4,18 @@ import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import cn.android666.im.core.database.dao.ContactDao
+import cn.android666.im.core.database.dao.ConversationDao
 import cn.android666.im.core.database.dao.DepartmentDao
 import cn.android666.im.core.database.dao.EmployeeDao
+import cn.android666.im.core.database.dao.MediaFileDao
+import cn.android666.im.core.database.dao.MessageDao
 import cn.android666.im.core.database.dao.SyncStateDao
 import cn.android666.im.core.database.entity.ContactEntity
+import cn.android666.im.core.database.entity.ConversationEntity
 import cn.android666.im.core.database.entity.DepartmentEntity
 import cn.android666.im.core.database.entity.EmployeeEntity
+import cn.android666.im.core.database.entity.MediaFileEntity
+import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.database.entity.SyncStateEntity
 
 /**
@@ -22,12 +28,16 @@ import cn.android666.im.core.database.entity.SyncStateEntity
  * 版本历史：
  * - 1：组织架构缓存（department、employee）、同步游标（sync_state）—— 开发计划 3.12
  * - 2：常用联系人（contact，自动迁移）—— 开发计划 3.19
+ * - 3：消息、会话、附件（message、conversation、media_file，自动迁移）—— 开发计划 4.1
  */
 @Database(
-    entities = [DepartmentEntity::class, EmployeeEntity::class, SyncStateEntity::class, ContactEntity::class],
-    version = 2,
+    entities = [
+        DepartmentEntity::class, EmployeeEntity::class, SyncStateEntity::class, ContactEntity::class,
+        MessageEntity::class, ConversationEntity::class, MediaFileEntity::class,
+    ],
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class ImDatabase : RoomDatabase() {
 
@@ -58,6 +68,27 @@ abstract class ImDatabase : RoomDatabase() {
      * @return DAO
      */
     abstract fun contactDao(): ContactDao
+
+    /**
+     * 消息。
+     *
+     * @return DAO
+     */
+    abstract fun messageDao(): MessageDao
+
+    /**
+     * 会话。
+     *
+     * @return DAO
+     */
+    abstract fun conversationDao(): ConversationDao
+
+    /**
+     * 附件本地状态。
+     *
+     * @return DAO
+     */
+    abstract fun mediaFileDao(): MediaFileDao
 
     companion object {
         /**

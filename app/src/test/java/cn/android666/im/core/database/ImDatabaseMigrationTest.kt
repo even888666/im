@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import cn.android666.im.core.database.entity.ContactEntity
+import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.testing.RoomSchemaHelper
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.first
@@ -65,6 +66,28 @@ class ImDatabaseMigrationTest {
             assertThat(db.syncStateDao().get("org:version")).isEqualTo("7")
             db.contactDao().upsert(ContactEntity("10002@im.example.com", "to"))
             assertThat(db.contactDao().observeIsContact("10002@im.example.com").first()).isTrue()
+        } finally {
+            db.close()
+        }
+    }
+
+    /** 2 → 3（自动迁移，新增 message、conversation、media_file）：原有数据保留，消息去重约束生效 */
+    @Test
+    fun migrate2To3_keepsDataAndAddsMessageTables() = runTest {
+        RoomSchemaHelper.createDatabase(context, ImDatabase::class.java.name, TEST_DB, 2).apply {
+            execSQL("INSERT INTO contact (jid, subscription) VALUES ('10002@im.example.com', 'both')")
+            close()
+        }
+        val db = openWithRoom()
+        try {
+            assertThat(db.contactDao().observeIsContact("10002@im.example.com").first()).isTrue()
+            val message = MessageEntity(
+                msgId = "m1", conversationId = "10002@im.example.com", senderJid = "10002@im.example.com",
+                direction = MessageEntity.DIRECTION_IN, type = "text", body = "hi", status = MessageEntity.STATUS_RECEIVED,
+                serverTime = 1,
+            )
+            assertThat(db.messageDao().insert(message)).isGreaterThan(0L)
+            assertThat(db.messageDao().insert(message)).isEqualTo(-1L)
         } finally {
             db.close()
         }
