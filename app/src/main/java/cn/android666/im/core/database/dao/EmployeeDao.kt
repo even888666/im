@@ -67,11 +67,10 @@ interface EmployeeDao {
     fun observeByDepartment(deptId: String): Flow<List<EmployeeEntity>>
 
     /**
-     * 本地搜索的候选员工：姓名 / 手机包含、拼音 / 首字母 / 工号开头，或属于指定部门（部门路径匹配）。
-     * 结果再由 [cn.android666.im.data.org.OrgSearch] 按协议规范 §4.5 的规则打分排序。
+     * 本地搜索的候选员工：姓名 / 手机包含、拼音 / 首字母 / 工号开头。部门路径匹配的员工用 [getByDepartments] 另外查询。
+     * 结果再由 data/org 中的打分规则（协议规范 §4.5）排序。
      *
      * @param keyword 关键字（已转小写；LIKE 的通配符已转义，转义字符为 \）
-     * @param deptIds 部门路径匹配关键字的部门
      * @return 候选员工
      */
     @Query(
@@ -82,10 +81,19 @@ interface EmployeeDao {
            OR initials LIKE :keyword || '%' ESCAPE '\'
            OR empNo LIKE :keyword || '%' ESCAPE '\'
            OR mobile LIKE '%' || :keyword || '%' ESCAPE '\'
-           OR deptId IN (:deptIds)
         """,
     )
-    suspend fun searchCandidates(keyword: String, deptIds: List<String>): List<EmployeeEntity>
+    suspend fun searchCandidates(keyword: String): List<EmployeeEntity>
+
+    /**
+     * 多个部门的直属员工（本地搜索中部门路径匹配的部门）。调用方需按 [MAX_BIND_ARGS] 分批，
+     * Android 7 自带的 SQLite 每条语句最多 999 个参数。
+     *
+     * @param deptIds 部门 ID
+     * @return 员工
+     */
+    @Query("SELECT * FROM employee WHERE deptId IN (:deptIds)")
+    suspend fun getByDepartments(deptIds: List<String>): List<EmployeeEntity>
 
     /**
      * 员工数量。
@@ -94,4 +102,9 @@ interface EmployeeDao {
      */
     @Query("SELECT COUNT(*) FROM employee")
     suspend fun count(): Int
+
+    companion object {
+        /** 一条语句中 IN 列表的参数上限（低于 SQLite 3.32 之前的 999 限制，留出余量） */
+        const val MAX_BIND_ARGS = 500
+    }
 }

@@ -10,6 +10,8 @@ import cn.android666.im.core.security.AesGcmCredentialCipher
 import cn.android666.im.core.security.AndroidKeyStoreKeyProvider
 import cn.android666.im.core.security.RootCaTrust
 import cn.android666.im.data.account.CredentialStore
+import cn.android666.im.data.org.OrgRepository
+import cn.android666.im.data.org.OrgSyncStep
 import cn.android666.im.data.settings.AppSettingsStore
 import cn.android666.im.data.session.AppVisibilityHandler
 import cn.android666.im.data.session.SessionManager
@@ -129,6 +131,7 @@ class AppContainer(context: Context) {
                 CapabilitiesStep(xmppClient),
                 AccountStatusStep(xmppClient),
                 InitialPresenceStep(xmppClient),
+                OrgSyncStep(orgRepository),
             ),
             scope = applicationScope,
             onUserLoggedOut = userDatabaseHolder::close,
@@ -138,9 +141,12 @@ class AppContainer(context: Context) {
     /** 当前账号的用户数据库（按工号分库，登录时打开、退出登录时关闭） */
     val userDatabaseHolder: UserDatabaseHolder by lazy { UserDatabaseHolder(UserDatabaseHolder.create(appContext)) }
 
-    /** 前后台切换处理（CSI、回到前台立即重连） */
+    /** 组织架构：同步、本地查询与搜索 */
+    val orgRepository: OrgRepository by lazy { OrgRepository(xmppClient, userDatabaseHolder, clock) }
+
+    /** 前后台切换处理（CSI、回到前台立即重连、按需同步组织架构） */
     val appVisibilityHandler: AppVisibilityHandler by lazy {
-        AppVisibilityHandler(xmppClient, connectionManager, applicationScope)
+        AppVisibilityHandler(xmppClient, connectionManager, applicationScope, listOf({ orgRepository.syncIfStale() }))
     }
 
     /** 保活检查：开机、升级、定期巡检时调用 */

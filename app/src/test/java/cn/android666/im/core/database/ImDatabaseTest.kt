@@ -83,12 +83,12 @@ class ImDatabaseTest {
                 emp("axb", "赵六", "zhaoliu", "zl", "d4"),
             ),
         )
-        assertThat(dao.searchCandidates("三", emptyList()).map { it.empNo }).containsExactly("10001")
-        assertThat(dao.searchCandidates("zh", emptyList()).map { it.empNo }).containsExactly("10001", "axb")
-        assertThat(dao.searchCandidates("0000", emptyList()).map { it.empNo }).containsExactly("10001")
-        assertThat(dao.searchCandidates("不存在", listOf("d3")).map { it.empNo }).containsExactly("10002")
-        // LIKE 通配符已转义：a\_b 只匹配工号 a_b，不匹配 axb
-        assertThat(dao.searchCandidates("a\\_", emptyList()).map { it.empNo }).containsExactly("a_b")
+        assertThat(dao.searchCandidates("三").map { it.empNo }).containsExactly("10001")
+        assertThat(dao.searchCandidates("zh").map { it.empNo }).containsExactly("10001", "axb")
+        assertThat(dao.searchCandidates("0000").map { it.empNo }).containsExactly("10001")
+        assertThat(dao.getByDepartments(listOf("d3", "d4")).map { it.empNo }).containsExactly("10002", "a_b", "axb")
+        // LIKE 通配符已转义：a\_ 只匹配工号 a_b，不匹配 axb
+        assertThat(dao.searchCandidates("a\\_").map { it.empNo }).containsExactly("a_b")
     }
 
     @Test

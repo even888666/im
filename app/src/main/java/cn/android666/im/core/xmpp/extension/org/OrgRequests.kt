@@ -40,9 +40,9 @@ data class DeptChildren(val departments: List<OrgDepartment>, val employees: Lis
  * @property after 上一页最后一个员工的游标，第一页为 null
  */
 class DeptChildrenRequest(
-    private val deptId: String,
-    private val max: Int = 200,
-    private val after: String? = null,
+    val deptId: String,
+    val max: Int = 200,
+    val after: String? = null,
 ) : IqRequest<DeptChildren>(IqType.GET, "dept-children", ORG_NAMESPACE) {
 
     override val attributes: Map<String, String> = mapOf("deptId" to deptId)
@@ -78,7 +78,7 @@ data class EmployeesResult(val employees: List<OrgEmployee>, val deletedJids: Li
  *
  * @property jids 员工 bare JID 列表
  */
-class EmployeesRequest(private val jids: List<String>) :
+class EmployeesRequest(val jids: List<String>) :
     IqRequest<EmployeesResult>(IqType.GET, "employees", ORG_NAMESPACE) {
 
     init {
@@ -124,9 +124,9 @@ data class OrgSyncPage(val version: Long, val full: Boolean, val entries: List<O
  * @property after 上一页最后一项的游标，第一页为 null
  */
 class OrgSyncRequest(
-    private val version: Long,
-    private val max: Int = 500,
-    private val after: String? = null,
+    val version: Long,
+    val max: Int = 500,
+    val after: String? = null,
 ) : IqRequest<OrgSyncPage>(IqType.GET, "sync", ORG_NAMESPACE) {
 
     override val attributes: Map<String, String> = mapOf("version" to version.toString())
@@ -174,8 +174,8 @@ class OrgSyncRequest(
  * @property max 最多返回条数
  */
 class SearchEmployeesRequest(
-    private val keyword: String,
-    private val max: Int = 20,
+    val keyword: String,
+    val max: Int = 20,
 ) : IqRequest<List<OrgEmployee>>(IqType.GET, "search", ORG_NAMESPACE) {
 
     override val attributes: Map<String, String> = mapOf("keyword" to keyword)

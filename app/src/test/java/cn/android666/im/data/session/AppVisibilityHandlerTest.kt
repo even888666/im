@@ -51,4 +51,20 @@ class AppVisibilityHandlerTest {
 
         assertThat(client.calls.count { it == "reconnect" }).isEqualTo(2)
     }
+
+    /** 回到前台的任务依次执行，某个任务失败不影响后面的任务 */
+    @Test
+    fun foreground_runsTasks_failureIsolated() = runTest {
+        val manager = XmppConnectionManager(client, FakeNetworkMonitor(), backgroundScope) { ReconnectPolicy(jitterRatio = 0.0) }
+        val executed = mutableListOf<String>()
+        val handler = AppVisibilityHandler(
+            client, manager, backgroundScope,
+            listOf({ executed += "a"; error("模拟失败") }, { executed += "b" }),
+        )
+
+        handler.onForeground()
+        runCurrent()
+
+        assertThat(executed).containsExactly("a", "b").inOrder()
+    }
 }
