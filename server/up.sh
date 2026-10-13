@@ -19,7 +19,7 @@ if [[ ! -f "$SERVER_DIR/.env" ]]; then
   chmod 600 "$SERVER_DIR/.env"
   log "已生成 $SERVER_DIR/.env"
 fi
-for key in POSTGRES_PASSWORD OPENFIRE_ADMIN_PASSWORD; do
+for key in POSTGRES_PASSWORD OPENFIRE_ADMIN_PASSWORD TURN_SECRET; do
   if grep -qE "^$key=$" "$SERVER_DIR/.env"; then
     sed -i "s/^$key=$/$key=$(openssl rand -hex 16)/" "$SERVER_DIR/.env"
     log "已为 $key 生成随机密码（见 .env）"
@@ -46,12 +46,14 @@ IM_DOMAIN="$IM_DOMAIN" EXTRA_SANS="${EXTRA_SANS:-}" bash "$SERVER_DIR/certs/gen-
 # 4. 下载安装包与插件
 bash "$SERVER_DIR/fetch.sh"
 
-# 5. 构建并启动
+# 5. 生成 coturn 配置，构建并启动
+bash "$SERVER_DIR/scripts/render-coturn-conf.sh"
 log "构建并启动容器…"
 compose build --quiet
 compose up -d --remove-orphans
 wait_healthy postgres
 wait_healthy openfire 300
+wait_healthy coturn 60
 
 # 6. 等待 autosetup 完成（安装完成后 openfire.xml 中出现 <setup>true</setup>）
 for ((i = 0; i < 120; i++)); do
@@ -67,8 +69,9 @@ if ! compose exec -T openfire grep -q "<setup>true</setup>" /opt/openfire/conf/o
 fi
 log "Openfire 已完成安装"
 
-# 7. 系统属性
+# 7. 系统属性、外部服务（STUN / TURN）
 bash "$SERVER_DIR/scripts/apply-properties.sh"
+bash "$SERVER_DIR/scripts/apply-external-services.sh"
 
 # 8. 开发环境：把域名指向本机，客户端和测试可以直接用域名访问（证书校验需要域名匹配）
 if [[ "$IM_ENV" == "dev" ]]; then
@@ -86,4 +89,5 @@ log "服务端已就绪："
 log "  XMPP：$IM_DOMAIN:5222（STARTTLS）"
 log "  HTTPS（文件上传 / WebSocket）：https://$IM_DOMAIN:7443"
 log "  管理后台：https://${ADMIN_BIND_ADDRESS}:9091（用户名 admin，密码见 .env 中的 OPENFIRE_ADMIN_PASSWORD）"
+log "  STUN / TURN：${TURN_HOST:-turn.$IM_DOMAIN}:${TURN_PORT:-3478}（UDP，中继端口 ${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}）"
 log "  根证书：$SERVER_DIR/certs/out/ca.crt"

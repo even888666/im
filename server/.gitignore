@@ -2,3 +2,5 @@
 .env
 # 下载的 Openfire 安装包与插件
 docker/openfire/dist/
+# 生成的 coturn 配置（含共享密钥）
+docker/coturn/turnserver.conf

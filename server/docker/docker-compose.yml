@@ -60,6 +60,22 @@ services:
       retries: 60
       start_period: 20s
 
+  coturn:
+    image: ${COTURN_IMAGE}
+    restart: unless-stopped
+    # 使用宿主机网络：TURN 需要大量 UDP 中继端口，逐个端口映射性能差且容易漏
+    network_mode: host
+    # 配置由 scripts/render-coturn-conf.sh 生成（含共享密钥，不提交）
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    healthcheck:
+      # 检查 TCP 监听端口（UDP 端口无法用 /dev/tcp 检查，TCP 与 UDP 由同一进程监听）
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/${TURN_PORT:-3478}'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
 volumes:
   postgres-data:
   openfire-conf:

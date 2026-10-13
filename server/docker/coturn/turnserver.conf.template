@@ -1,0 +1,23 @@
+# coturn 配置模板，由 server/scripts/render-coturn-conf.sh 替换 @变量@ 后生成 turnserver.conf
+# （生成的文件含共享密钥，不提交到仓库）。
+
+# STUN / TURN 监听端口（UDP + TCP）
+listening-port=@TURN_PORT@
+# 中继端口范围（UDP），防火墙需开放
+min-port=@TURN_MIN_PORT@
+max-port=@TURN_MAX_PORT@
+
+# TURN REST API 临时凭证（与 Openfire 的 External Service Discovery 插件共享密钥）：
+# 用户名 = 过期时间戳:工号，密码 = Base64(HMAC-SHA1(共享密钥, 用户名))，插件下发的凭证有效期 24 小时
+use-auth-secret
+static-auth-secret=@TURN_SECRET@
+realm=@IM_DOMAIN@
+
+# STUN 消息带指纹，WebRTC 需要
+fingerprint
+# 专网内暂不提供 TURNS（TLS）；DTLS 默认不启动
+no-tls
+
+# 日志输出到标准输出（docker logs 查看），不做日志滚动
+log-file=stdout
+simple-log
