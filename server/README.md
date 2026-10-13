@@ -21,7 +21,11 @@ server/
 ├── certs/                         # 证书脚本；生成的根证书、服务器证书在 certs/out/（不提交）
 ├── config/openfire-properties.conf  # Openfire 系统属性
 ├── docker/                        # docker-compose.yml、Openfire 镜像、coturn 配置模板
-└── scripts/                       # up.sh 调用的子脚本
+├── scripts/                       # up.sh 调用的子脚本
+├── settings.gradle.kts / build.gradle.kts / gradle/  # 自研插件的 Gradle 构建（./gradlew -p server build）
+├── plugins/org/                   # 组织架构插件（Java），打包到 build/plugins/org.jar
+├── testdata/employees.csv         # 开发环境的测试员工（10001 ~ 10020）
+└── org-import/                    # 组织架构导入目录（运行时创建，不提交）：放入 .xlsx / .csv 自动导入
 ```
 
 ## 一、在开发环境（云会话）中使用
@@ -36,7 +40,8 @@ bash server/reset.sh     # 停止并删除所有数据（开发环境从零重�
 
 开发环境（`.env` 中 `IM_ENV=dev`）会：
 
-- 自动创建测试账号 `10001` ~ `10010`，密码见 `.env` 中的 `TEST_USER_PASSWORD`；
+- 自动创建测试账号 `10001` ~ `10010`，并通过组织架构插件导入 `testdata/employees.csv`（补充部门信息、新建 `10011` ~ `10020`），
+  密码都是 `.env` 中的 `TEST_USER_PASSWORD`，不强制改密；
 - 在 `/etc/hosts` 中把 `im.example.com` 及其子域指向 `127.0.0.1`。
 
 运行连接本地服务器的集成测试：
@@ -143,6 +148,50 @@ ssh -L 9091:127.0.0.1:9091 用户@服务器
 5. 等待 Openfire 自动安装完成（`openfire.xml` 中的 autosetup）；
 6. 写入 Openfire 系统属性（`scripts/apply-properties.sh`）；
 7. 配置 STUN / TURN 服务下发（`scripts/apply-external-services.sh`）；
-8. 开发环境写入 hosts。
+8. 构建并部署自研插件（`scripts/deploy-plugins.sh`），开发环境导入测试员工（`scripts/import-testdata.sh`）；
+9. 开发环境写入 hosts。
 
 所有步骤都可重复执行，已完成的会跳过。
+
+## 五、组织架构插件（org）
+
+自研插件，提供账号状态、组织架构查询与同步、同事搜索、在线状态查询、订阅自动同意（协议规范 §3 ~ §5）。
+
+### 5.1 构建与部署
+
+```bash
+./gradlew -p server build        # 编译、运行插件单元测试、打包 server/build/plugins/org.jar
+bash server/scripts/deploy-plugins.sh   # 构建并部署到运行中的 Openfire（up.sh 会自动执行）
+```
+
+- 构建需要 JDK 17+（插件按 Java 17 编译，Openfire 5 的最低要求）。公司服务器上没有 JDK 时，在开发机上执行
+  `./gradlew -p server assemble`，把 `server/build/plugins/` 复制到服务器同一位置后再运行 `up.sh`。
+- jar 有变化时 Openfire 自动重新加载插件，不需要重启；容器重启时入口脚本也会把 `build/plugins/` 中的插件同步进去。
+- 插件第一次加载时自动建表（`imOrgDept`、`imOrgEmployee`、`imOrgChange`、`imOrgMeta`），支持 PostgreSQL、MySQL、HSQLDB。
+
+### 5.2 导入员工
+
+两种方式效果相同：
+
+1. 管理后台 → 用户/组 → 组织架构 → **Excel 导入**：选择 .xlsx 或 .csv 文件导入，可下载模板；
+2. 把文件放进 `server/org-import/`（容器内 `/opt/openfire/org-import/`），10 秒内自动导入，
+   文件移到 `done/`，旁边的 `*.result.txt` 是导入结果（含系统生成的初始密码，权限 600）。
+
+导入模板（第一行为表头）：`工号、姓名、部门路径`（必填）、`职位、手机、座机、邮箱、初始密码`。
+
+- 以工号为准：已存在的员工更新信息（不改密码），不存在的新建账号；表中没有的员工**不会**被删除，离职请在后台禁用；
+- 部门路径用 `/` 分隔（如 `总部/研发中心/Android组`），不存在的部门自动创建；
+- 初始密码为空时随机生成（10 位，含字母和数字），在导入结果中列出；
+- 新账号首次登录是否强制改密由 `.env` 的 `ORG_IMPORT_MUST_CHANGE_PASSWORD` 决定（默认生产环境 true、开发环境 false）。
+
+### 5.3 后台维护
+
+管理后台 → 用户/组 → 组织架构：
+
+| 页面 | 功能 |
+| --- | --- |
+| 部门管理 | 部门树、新增、修改名称 / 上级 / 排序、删除（只能删除空部门） |
+| 员工管理 | 按关键字 / 部门查询、新增员工、编辑信息与调岗、**禁用**（立即踢下线且无法登录）/ 启用、要求下次登录改密 |
+
+每次修改都会使组织架构版本号加 1，客户端下次同步（登录、回到前台超过 10 分钟、下拉刷新）时拿到变更。
+变更日志保留 30 天，超过 30 天没有同步的客户端会收到全量数据。
