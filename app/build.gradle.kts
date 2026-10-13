@@ -9,6 +9,19 @@ plugins {
  */
 val runIntegrationTests: String = providers.gradleProperty("im.it").getOrElse("false")
 
+/** 集成测试使用的服务器目录（server/，由 server/up.sh 部署），测试从中读取根证书和测试账号密码 */
+val serverDir: File = rootProject.layout.projectDirectory.dir("server").asFile
+
+/**
+ * 不走 HTTP 代理的主机。云环境通过 JAVA_TOOL_OPTIONS 给所有 JVM 设置了 HTTPS 代理，
+ * 代理会把开发域名 im.example.com 转发到公网上的真实域名，集成测试访问本机 Docker 中的
+ * 服务器（文件上传等 HTTP 请求）必须绕过代理，所以在原有列表后追加开发域名。
+ */
+val testNonProxyHosts: String = listOfNotNull(
+    System.getProperty("http.nonProxyHosts")?.takeIf { it.isNotBlank() } ?: "localhost|127.*",
+    "im.example.com|*.im.example.com",
+).joinToString("|")
+
 android {
     namespace = "cn.android666.im"
     compileSdk {
@@ -57,6 +70,8 @@ android {
             isIncludeAndroidResources = true
             all {
                 it.systemProperty("im.it", runIntegrationTests)
+                it.systemProperty("im.it.serverDir", serverDir.absolutePath)
+                it.systemProperty("http.nonProxyHosts", testNonProxyHosts)
                 // Robolectric 在新版 SDK（API 36+）中需要反射访问 JDK 内部类（FileDescriptor 相关），
                 // JDK 17+ 默认不导出这些包，不加会报 IllegalAccessException
                 it.jvmArgs(
