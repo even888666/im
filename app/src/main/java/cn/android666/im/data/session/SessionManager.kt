@@ -59,6 +59,9 @@ class SessionManager(
     @Volatile
     private var context: SessionContext? = null
 
+    /** 当前登录的工号；未登录或会话已结束时为 null */
+    val currentUsername: String? get() = context?.username
+
     /** 正在执行的步骤协程；新的连接事件到来时取消旧的 */
     private var stepsJob: Job? = null
 

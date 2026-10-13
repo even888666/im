@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 面包屑文字颜色：可点击（enabled）为主题色，当前一级（disabled）为普通文字颜色 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?attr/colorPrimary" android:state_enabled="true" />
+    <item android:color="?android:attr/textColorPrimary" />
+</selector>

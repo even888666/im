@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 面包屑中的一级：可点击时为主题色，当前部门（不可点击）为普通文字颜色。列表项的背景只是点击水波纹，Lint 的 Overdraw 是误报 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="40dp"
+    android:background="?attr/selectableItemBackground"
+    tools:ignore="Overdraw"
+    android:gravity="center_vertical"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:textAppearance="?attr/textAppearanceBodyMedium"
+    android:textColor="@color/crumb_text" />

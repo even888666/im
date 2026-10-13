@@ -60,6 +60,14 @@
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 组织架构浏览、同事资料卡（开发计划 3.17、3.18） -->
+        <activity
+            android:name=".ui.contacts.OrgBrowseActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.profile.EmployeeProfileActivity"
+            android:exported="false" />
+
         <!--
             承载 XMPP 长连接的前台服务。类型 specialUse：企业 IM 没有厂商推送，必须保持长连接才能收到消息；
             Android 15 的开机广播不能启动 dataSync 等类型，且 dataSync 有 6 小时时长限制（功能清单 §18.1）。

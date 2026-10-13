@@ -12,6 +12,7 @@ import cn.android666.im.core.log.Logs
 import cn.android666.im.databinding.ActivityMainBinding
 import cn.android666.im.di.AppContainer
 import cn.android666.im.ui.base.MessageDialogFragment
+import cn.android666.im.ui.contacts.ContactsFragment
 import cn.android666.im.ui.base.appViewModels
 import cn.android666.im.ui.base.applySystemBarsPadding
 import cn.android666.im.ui.base.collectWhenStarted
@@ -125,7 +126,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun createTab(@IdRes itemId: Int): Fragment = when (itemId) {
         R.id.tab_messages -> PlaceholderFragment.newInstance(R.string.messages_empty)
-        R.id.tab_contacts -> PlaceholderFragment.newInstance(R.string.contacts_placeholder)
+        R.id.tab_contacts -> ContactsFragment()
         R.id.tab_me -> MeFragment()
         else -> error("未知的 Tab：$itemId")
     }

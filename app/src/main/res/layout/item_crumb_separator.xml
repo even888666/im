@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 面包屑分隔符 -->
+<ImageView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="16dp"
+    android:layout_height="40dp"
+    android:importantForAccessibility="no"
+    android:src="@drawable/ic_chevron_right" />

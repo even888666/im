@@ -95,7 +95,6 @@
     <string name="tab_contacts">通讯录</string>
     <string name="tab_me">我</string>
     <string name="messages_empty">暂无消息</string>
-    <string name="contacts_placeholder">通讯录将在组织架构功能完成后提供</string>
 
     <!-- 我 -->
     <string name="me_emp_no">工号：%1$s</string>
@@ -104,4 +103,28 @@
 
     <!-- 会话被结束 -->
     <string name="session_ended_title">提示</string>
+
+    <!-- 通讯录（开发计划 3.16 ~ 3.18） -->
+    <string name="contacts_search_hint">搜索同事：姓名、拼音、工号、手机、部门</string>
+    <string name="contacts_org">组织架构</string>
+    <string name="contacts_groups">我的群组</string>
+    <string name="contacts_frequent">常用联系人</string>
+    <string name="contacts_frequent_empty">还没有常用联系人</string>
+    <string name="contacts_search_empty">没有找到相关同事</string>
+    <string name="feature_pending">该功能将在后续版本提供</string>
+    <string name="org_member_count">%1$d 人</string>
+    <string name="org_empty">该部门没有下级部门和成员</string>
+    <string name="employee_subtitle">%1$s · %2$s</string>
+
+    <!-- 同事资料卡 -->
+    <string name="profile_title">详细资料</string>
+    <string name="profile_emp_no">工号</string>
+    <string name="profile_department">部门</string>
+    <string name="profile_mobile">手机</string>
+    <string name="profile_phone">座机</string>
+    <string name="profile_email">邮箱</string>
+    <string name="profile_send_message">发消息</string>
+    <string name="profile_call">打电话</string>
+    <string name="profile_not_found">该同事已离职或不在组织架构中</string>
+    <string name="profile_no_dialer">没有可以拨打电话的应用</string>
 </resources>
