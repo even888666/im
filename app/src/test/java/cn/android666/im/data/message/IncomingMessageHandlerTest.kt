@@ -1,0 +1,265 @@
+package cn.android666.im.data.message
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import cn.android666.im.core.common.Clock
+import cn.android666.im.core.common.IdGenerator
+import cn.android666.im.core.common.ServerClock
+import cn.android666.im.core.database.ImDatabase
+import cn.android666.im.core.database.UserDatabaseHolder
+import cn.android666.im.core.database.entity.ConversationEntity
+import cn.android666.im.core.database.entity.MessageEntity
+import cn.android666.im.core.xmpp.Credential
+import cn.android666.im.core.xmpp.extension.msg.MessageCodec
+import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.testing.FakeXmppClient
+import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+/**
+ * [IncomingMessageHandler] 测试：Room 内存库 + [FakeXmppClient] 模拟服务器推送报文。
+ */
+@RunWith(RobolectricTestRunner::class)
+class IncomingMessageHandlerTest {
+
+    private val client = FakeXmppClient()
+
+    private var holder: UserDatabaseHolder? = null
+
+    /** 顺序生成的 ID：r1、r2…… */
+    private val ids = object : IdGenerator {
+        private var next = 0
+        override fun messageId() = "r${++next}"
+        override fun roomId() = "g1"
+        override fun callId() = "c1"
+        override fun uuid() = "u1"
+    }
+
+    @After
+    fun tearDown() {
+        holder?.close()
+    }
+
+    /**
+     * 测试环境。
+     *
+     * @property handler 被测对象
+     * @property repository 消息仓库
+     * @property db 数据库
+     */
+    private class Rig(val handler: IncomingMessageHandler, val repository: MessageRepository, val db: ImDatabase)
+
+    /**
+     * 创建测试环境：10001 已登录，服务器时间 = 虚拟时间 + 1_000_000。
+     *
+     * @param loggedIn 是否已打开用户数据库（已登录）
+     * @return 测试环境
+     */
+    private suspend fun TestScope.rig(loggedIn: Boolean = true): Rig {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val newHolder = UserDatabaseHolder {
+            Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), ImDatabase::class.java)
+                .setQueryCoroutineContext(dispatcher)
+                .allowMainThreadQueries()
+                .build()
+        }
+        holder = newHolder
+        val db = newHolder.open("10001")
+        if (!loggedIn) newHolder.close()
+        val clock = object : Clock {
+            override fun nowMillis() = 1_000_000 + testScheduler.currentTime
+            override fun elapsedMillis() = testScheduler.currentTime
+        }
+        client.login(Credential("10001", "x"))
+        val selfJid = { newHolder.username?.let { "$it@im.example.com" } }
+        val queue = SendQueue(client, newHolder, backgroundScope, clock)
+        val repository = MessageRepository(newHolder, queue, ServerClock(clock), ids, selfJid)
+        val handler = IncomingMessageHandler(client, repository, ServerClock(clock), ids, selfJid, backgroundScope)
+        runCurrent()
+        return Rig(handler, repository, db)
+    }
+
+    /** 对方发来的文本消息（协议规范 §6.1） */
+    private fun chat(id: String?, body: String = "你好", extra: String = "", from: String = "$BOB/pc") =
+        "<message xmlns='jabber:client' type='chat'${id?.let { " id='$it'" } ?: ""} from='$from' to='10001@im.example.com/android'>" +
+            "<body>$body</body>${id?.let { "<origin-id xmlns='urn:xmpp:sid:0' id='$it'/>" } ?: ""}" +
+            "<request xmlns='urn:xmpp:receipts'/><markable xmlns='urn:xmpp:chat-markers:0'/>$extra</message>"
+
+    @Test
+    fun chat_savedWithConversationAndReceipt() = runTest {
+        val rig = rig()
+        val notified = async(start = CoroutineStart.UNDISPATCHED) { rig.handler.newMessages.first() }
+
+        client.receive(chat("5b1e", extra = "<stanza-id xmlns='urn:xmpp:sid:0' id='s-9' by='10001@im.example.com'/>"))
+        runCurrent()
+
+        val saved = rig.db.messageDao().get(BOB, "5b1e")!!
+        assertThat(saved.direction).isEqualTo(MessageEntity.DIRECTION_IN)
+        assertThat(saved.status).isEqualTo(MessageEntity.STATUS_RECEIVED)
+        assertThat(saved.senderJid).isEqualTo(BOB)
+        assertThat(saved.body).isEqualTo("你好")
+        assertThat(saved.type).isEqualTo("text")
+        assertThat(saved.stanzaId).isEqualTo("s-9")
+        // 实时消息：本地接收时间换算的服务器时间
+        assertThat(saved.serverTime).isEqualTo(1_000_000)
+        assertThat(notified.await().msgId).isEqualTo("5b1e")
+
+        val conversation = rig.db.conversationDao().get(BOB)!!
+        assertThat(conversation.type).isEqualTo(ConversationEntity.TYPE_SINGLE)
+        assertThat(conversation.unreadCount).isEqualTo(1)
+        assertThat(conversation.lastMsgPreview).isEqualTo("你好")
+
+        // 写库后回执：发给原消息的完整 JID
+        val receipt = MessageCodec.parse(client.sentMessages.single()).message
+        assertThat(receipt.to).isEqualTo("$BOB/pc")
+        assertThat(receipt.receivedId).isEqualTo("5b1e")
+    }
+
+    /** 重复的消息（离线消息、重发）丢弃，未读不增加；仍然回执 */
+    @Test
+    fun duplicate_droppedButReceiptedAgain() = runTest {
+        val rig = rig()
+
+        client.receive(chat("5b1e"))
+        client.receive(chat("5b1e", body = "重发"))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "5b1e")!!.body).isEqualTo("你好")
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(1)
+        assertThat(client.sentMessages).hasSize(2)
+    }
+
+    /** 离线消息：使用 delay 时间；比会话最后一条早时不改变预览，但计入未读 */
+    @Test
+    fun offline_usesDelayStampAndKeepsLatestPreview() = runTest {
+        val rig = rig()
+
+        client.receive(chat("new", body = "新的"))
+        client.receive(chat("old", body = "旧的", extra = "<delay xmlns='urn:xmpp:delay' stamp='1970-01-01T00:00:01.000Z'/>"))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "old")!!.serverTime).isEqualTo(1_000)
+        val conversation = rig.db.conversationDao().get(BOB)!!
+        assertThat(conversation.lastMsgPreview).isEqualTo("新的")
+        assertThat(conversation.unreadCount).isEqualTo(2)
+    }
+
+    /** 正在查看的会话：不计未读 */
+    @Test
+    fun activeConversation_noUnread() = runTest {
+        val rig = rig()
+        rig.repository.setActiveConversation(BOB)
+
+        client.receive(chat("a"))
+        runCurrent()
+
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(0)
+        assertThat(rig.repository.activeConversationId()).isEqualTo(BOB)
+    }
+
+    /** 非文本内容保存为 JSON；不认识的类型没有 body 时显示升级提示 */
+    @Test
+    fun contentTypes() = runTest {
+        val rig = rig()
+
+        client.receive(
+            chat(
+                "card",
+                body = "[名片] 王五",
+                extra = "<content xmlns='urn:android666:im:msg:1' type='card'><card jid='10003@im.example.com' name='王五'/></content>",
+            ),
+        )
+        client.receive(
+            "<message type='chat' id='future' from='$BOB/pc'><body></body>" +
+                "<content xmlns='urn:android666:im:msg:1' type='vote'/></message>",
+        )
+        runCurrent()
+
+        val card = rig.db.messageDao().get(BOB, "card")!!
+        assertThat(card.type).isEqualTo("card")
+        assertThat(MessageJson.decodeContent(card.type, card.contentJson)).isEqualTo(MessageContent.Card("10003@im.example.com", "王五"))
+        val future = rig.db.messageDao().get(BOB, "future")!!
+        assertThat(future.body).isEqualTo(IncomingMessageMapper.UNSUPPORTED_TEXT)
+        assertThat(MessageJson.decodeContent(future.type, future.contentJson)).isEqualTo(MessageContent.Unknown("vote"))
+        // 只回执请求了回执的消息（第二条没有 request）
+        assertThat(client.sentMessages.map { MessageCodec.parse(it).message.receivedId }).containsExactly("card")
+    }
+
+    /** 引用回复：记录原消息 ID */
+    @Test
+    fun reply_recorded() = runTest {
+        val rig = rig()
+
+        client.receive(chat("r", extra = "<reply xmlns='urn:xmpp:reply:0' to='10001@im.example.com' id='orig'/>"))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "r")!!.replyToMsgId).isEqualTo("orig")
+    }
+
+    /** 没有消息 ID：生成一个，仍然保存（无法去重）；不回执（没有 ID 可回） */
+    @Test
+    fun missingId_generated() = runTest {
+        val rig = rig()
+
+        client.receive(chat(null))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().last(BOB)!!.msgId).isEqualTo("r1")
+        assertThat(client.sentMessages).isEmpty()
+    }
+
+    /** 无法解析、未登录、暂不处理的类型：不崩溃，后续消息照常处理 */
+    @Test
+    fun ignoredAndBroken_doNotStopProcessing() = runTest {
+        val rig = rig()
+
+        client.receive("<message")
+        client.receive("<iq type='get'/>")
+        // 群消息（M6）、错误（4.5）、Carbons（4.6）、MAM（4.10）、回执（4.5）、没有发送方的消息
+        client.receive("<message type='groupchat' id='g' from='g1@conference.im.example.com/10002'><body>x</body></message>")
+        client.receive("<message type='error' id='e' from='$BOB'><error type='cancel'/></message>")
+        client.receive(
+            "<message from='10001@im.example.com'><sent xmlns='urn:xmpp:carbons:2'><forwarded xmlns='urn:xmpp:forward:0'>" +
+                "<message xmlns='jabber:client' type='chat' id='c' from='10001@im.example.com/pc' to='$BOB'><body>x</body></message>" +
+                "</forwarded></sent></message>",
+        )
+        client.receive(
+            "<message><result xmlns='urn:xmpp:mam:2' queryid='q' id='s'><forwarded xmlns='urn:xmpp:forward:0'>" +
+                "<message xmlns='jabber:client' type='chat' id='h' from='$BOB/pc'><body>x</body></message></forwarded></result></message>",
+        )
+        client.receive("<message id='rc' from='$BOB/pc'><received xmlns='urn:xmpp:receipts' id='m1'/></message>")
+        client.receive("<message type='chat' id='nofrom'><body>x</body></message>")
+        client.receive(chat("ok"))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "ok")).isNotNull()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(1)
+        assertThat(rig.db.conversationDao().get("g1@conference.im.example.com")).isNull()
+    }
+
+    /** 未登录（数据库未打开）时收到：忽略，不崩溃 */
+    @Test
+    fun notLoggedIn_ignored() = runTest {
+        rig(loggedIn = false)
+
+        client.receive(chat("a"))
+        runCurrent()
+
+        assertThat(client.sentMessages).isEmpty()
+    }
+
+    private companion object {
+        const val BOB = "10002@im.example.com"
+    }
+}

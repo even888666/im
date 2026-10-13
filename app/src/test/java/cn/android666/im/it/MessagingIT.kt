@@ -141,6 +141,33 @@ class MessagingIT {
         }
     }
 
+    /** 离线消息（开发计划 4.4，协议规范 §11.3）：对方离线时发送，对方上线发送初始 presence 后收到，带 delay 时间 */
+    @Test
+    fun offlineMessage_deliveredAfterPresenceWithDelay(): Unit = runBlocking {
+        val a = login(5)
+        val id = UUID.randomUUID().toString()
+        // B 不在线：服务器存为离线消息
+        assertThat(a.sendMessage(MessageCodec.chat(jidB, id, "离线消息", MessageContent.Text), TIMEOUT)).isTrue()
+
+        val b = SmackXmppClient(
+            serverConfig = ServerConfig(domain = ItServer.domain, host = ItServer.HOST, port = ItServer.PORT),
+            trustManager = ItServer.trustManager,
+            dispatchers = dispatchers,
+            clock = SystemTimeClock,
+            logStanzas = { false },
+        ).also { clients += it }
+        b.login(Credential(ItServer.user(6), ItServer.testUserPassword))
+        coroutineScope {
+            val received = expect(b) { it.message.msgId == id }
+            b.sendPresence()
+
+            val msg = received.await().message
+            assertThat(msg.body).isEqualTo("离线消息")
+            assertThat(msg.delayStamp).isNotNull()
+            assertThat(msg.delayStamp!!).isAtMost(System.currentTimeMillis() + 60_000)
+        }
+    }
+
     private companion object {
         /** 单次等待上限（毫秒） */
         const val TIMEOUT = 15_000L

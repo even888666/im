@@ -13,6 +13,7 @@ import cn.android666.im.data.account.CredentialStore
 import cn.android666.im.data.avatar.AvatarRepository
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
+import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
@@ -133,6 +134,8 @@ class AppContainer(context: Context) {
                 userDatabaseHolder.open(username)
                 // 确保发送队列已创建：它监听用户数据库的打开，恢复上次未发完的消息
                 sendQueue.wake()
+                // 确保已订阅收到的消息：发送初始 presence 后服务器立即投递离线消息
+                incomingMessageHandler
             },
             steps = listOf(
                 EnableCarbonsStep(xmppClient),
@@ -171,11 +174,17 @@ class AppContainer(context: Context) {
     /** 发送队列：按顺序发送"发送中"的消息，等待服务器确认 */
     val sendQueue: SendQueue by lazy { SendQueue(xmppClient, userDatabaseHolder, applicationScope, clock) }
 
+    /** 本人 bare JID（当前打开的用户数据库对应的账号）；未登录时为 null */
+    val selfJid: () -> String? = { userDatabaseHolder.username?.let { "$it@${serverConfig.domain}" } }
+
     /** 消息仓库：发送入口、消息与会话写库 */
     val messageRepository: MessageRepository by lazy {
-        MessageRepository(userDatabaseHolder, sendQueue, serverClock, idGenerator) {
-            userDatabaseHolder.username?.let { "$it@${serverConfig.domain}" }
-        }
+        MessageRepository(userDatabaseHolder, sendQueue, serverClock, idGenerator, selfJid)
+    }
+
+    /** 收到的消息的分发：去重写库、回执 */
+    val incomingMessageHandler: IncomingMessageHandler by lazy {
+        IncomingMessageHandler(xmppClient, messageRepository, serverClock, idGenerator, selfJid, applicationScope)
     }
 
     /** 前后台切换处理（CSI、回到前台立即重连、按需同步组织架构） */

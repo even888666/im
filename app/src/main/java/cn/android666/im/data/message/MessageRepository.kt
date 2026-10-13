@@ -10,6 +10,7 @@ import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.log.Logs
 import cn.android666.im.core.xmpp.extension.msg.Mention
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * 消息仓库（Android工程架构.md §4.5）：消息写库（事务内完成去重、会话更新、未读数计算）与发送入口。
@@ -31,6 +32,45 @@ class MessageRepository(
 ) {
 
     private val log = Logs.file(TAG)
+
+    /** 用户正在查看的会话（聊天页可见时设置），该会话的新消息不计未读 */
+    private val activeConversation = MutableStateFlow<String?>(null)
+
+    /**
+     * 设置用户正在查看的会话。
+     *
+     * @param conversationId 会话 ID；离开聊天页时为 null
+     */
+    fun setActiveConversation(conversationId: String?) {
+        activeConversation.value = conversationId
+        log.info("当前查看的会话：{}", conversationId)
+    }
+
+    /**
+     * 用户正在查看的会话。
+     *
+     * @return 会话 ID；没有打开聊天页时为 null
+     */
+    fun activeConversationId(): String? = activeConversation.value
+
+    /**
+     * 保存一条收到的消息（开发计划 4.4，Android工程架构.md §6.1）：事务内去重 → 插入 → 更新会话与未读数。
+     *
+     * @param message 消息（rowId 为 0）
+     * @param conversationType 会话不存在时使用的类型
+     * @return 保存后的消息（含 rowId）；"会话 + 消息 ID"已存在（重复）时为 null
+     * @throws IllegalStateException 未登录
+     */
+    suspend fun saveIncoming(message: MessageEntity, conversationType: Int): MessageEntity? {
+        val db = databases.require()
+        return db.withTransaction {
+            val rowId = db.messageDao().insert(message)
+            if (rowId <= 0) return@withTransaction null
+            val saved = message.copy(rowId = rowId)
+            updateConversation(db, saved, conversationType)
+            saved
+        }
+    }
 
     /**
      * 发送文本消息：以"发送中"写库并更新会话，然后交给发送队列（开发计划 4.3）。
@@ -116,7 +156,9 @@ class MessageRepository(
     }
 
     /**
-     * 新消息写入后更新会话的最后一条消息（会话不存在时创建）。比现有最后一条更早的消息（补拉的历史）不改变预览。
+     * 新消息写入后更新会话（会话不存在时创建）：
+     * - 最后一条消息：比现有最后一条更早的消息（补拉的历史、迟到的离线消息）不改变预览；
+     * - 未读数：对方发来的、未撤回的、且用户没有正在查看该会话时加 1；@ 了我时标记"有人@我"。
      *
      * @param db 数据库（在事务中调用）
      * @param message 新消息（含 rowId）
@@ -124,15 +166,19 @@ class MessageRepository(
      */
     private suspend fun updateConversation(db: ImDatabase, message: MessageEntity, conversationType: Int) {
         val dao = db.conversationDao()
-        val existing = dao.get(message.conversationId) ?: ConversationEntity(message.conversationId, conversationType)
-        if (existing.lastMsgRowId != null && message.serverTime < existing.lastMsgTime) return
-        dao.upsert(
-            existing.copy(
-                lastMsgRowId = message.rowId,
-                lastMsgPreview = message.body,
-                lastMsgTime = message.serverTime,
-            ),
-        )
+        val stored = dao.get(message.conversationId)
+        val existing = stored ?: ConversationEntity(message.conversationId, conversationType)
+        val countUnread = message.direction == MessageEntity.DIRECTION_IN && !message.retracted &&
+            activeConversation.value != message.conversationId
+        val isLatest = existing.lastMsgRowId == null || message.serverTime >= existing.lastMsgTime
+        var updated = existing
+        if (isLatest) {
+            updated = updated.copy(lastMsgRowId = message.rowId, lastMsgPreview = message.body, lastMsgTime = message.serverTime)
+        }
+        if (countUnread) {
+            updated = updated.copy(unreadCount = updated.unreadCount + 1, mentionMe = updated.mentionMe || message.mentionMe)
+        }
+        if (stored == null || updated != existing) dao.upsert(updated)
     }
 
     companion object {
