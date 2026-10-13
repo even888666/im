@@ -36,23 +36,25 @@ PLUGIN_COORDS = {
 
 
 def fetch_versions(coord: str) -> list[str]:
-    """从各仓库读取某个坐标的全部版本号。
+    """从各仓库读取某个坐标的全部版本号，并合并去重。
+
+    必须合并所有仓库的结果，不能取到第一个就返回：有些坐标在多个仓库都存在但版本不全，
+    例如 Google Maven 上只有 KSP 的早期版本，新版本只发布在 Maven Central。
 
     :param coord: Maven 坐标，格式 group:artifact
     :return: 版本号列表；所有仓库都查不到时返回空列表
     """
     group, artifact = coord.split(":")
     path = f"{group.replace('.', '/')}/{artifact}/maven-metadata.xml"
+    versions: set[str] = set()
     for repo in REPOS:
         try:
             with urllib.request.urlopen(f"{repo}/{path}", timeout=20) as resp:
                 xml = resp.read().decode("utf-8")
-            versions = re.findall(r"<version>([^<]+)</version>", xml)
-            if versions:
-                return versions
-        except Exception:  # noqa: BLE001 —— 某个仓库没有该坐标或网络失败时换下一个仓库
+            versions.update(re.findall(r"<version>([^<]+)</version>", xml))
+        except Exception:  # noqa: BLE001 —— 某个仓库没有该坐标或网络失败时继续查下一个仓库
             continue
-    return []
+    return list(versions)
 
 
 def version_key(v: str):
