@@ -171,6 +171,8 @@ dependencies {
     implementation(libs.androidx.room.paging)
     implementation(libs.androidx.paging.runtime)
     implementation(libs.coil)
+    implementation(libs.coil.network.okhttp)
+    implementation(libs.okhttp)
     implementation(libs.androidx.exifinterface)
     ksp(libs.androidx.room.compiler)
     // XMPP（Smack），只允许 core/xmpp/smack 包引用（Android工程架构.md §3.3）
@@ -190,6 +192,7 @@ dependencies {
     testImplementation(libs.smack.java11)
     testImplementation(libs.androidx.work.testing)
     testImplementation(libs.androidx.paging.testing)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }

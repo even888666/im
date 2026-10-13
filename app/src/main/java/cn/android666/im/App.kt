@@ -1,6 +1,10 @@
 package cn.android666.im
 
 import android.app.Application
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.work.Configuration
 import androidx.lifecycle.LifecycleOwner
@@ -18,7 +22,18 @@ import kotlinx.coroutines.launch
  * 日志库不在这里初始化：它由 AndroidX Startup（[cn.android666.im.core.log.LogInitializer]）
  * 在 Application.onCreate 之前完成，以便记录更早的日志。
  */
-class App : Application(), Configuration.Provider {
+class App : Application(), Configuration.Provider, SingletonImageLoader.Factory {
+
+    /**
+     * Coil 的全局图片加载器：网络图片使用全局 OkHttpClient（只信任企业根证书，开发计划 5.1）。
+     *
+     * @param context Context
+     * @return 图片加载器
+     */
+    override fun newImageLoader(context: PlatformContext): ImageLoader = ImageLoader.Builder(context)
+        .components { add(OkHttpNetworkFetcherFactory(callFactory = { container.okHttpClient })) }
+        .build()
+
 
     /**
      * WorkManager 按需初始化的配置（Manifest 中已移除默认的 WorkManagerInitializer）：

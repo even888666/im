@@ -10,7 +10,9 @@ import cn.android666.im.core.network.NetworkMonitor
 import cn.android666.im.core.security.AesGcmCredentialCipher
 import cn.android666.im.core.security.AndroidKeyStoreKeyProvider
 import cn.android666.im.core.security.RootCaTrust
+import cn.android666.im.core.network.HttpClients
 import cn.android666.im.data.account.CredentialStore
+import okhttp3.OkHttpClient
 import cn.android666.im.data.avatar.AvatarRepository
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
@@ -94,6 +96,11 @@ class AppContainer(context: Context) {
 
     /** 只信任企业根证书的 TLS 配置，XMPP 与 HTTP 共用 */
     val rootCaTrust: RootCaTrust by lazy { RootCaTrust.fromResources(appContext) }
+
+    /** HTTP 客户端：文件上传 / 下载、网络图片（只信任企业根证书，开发计划 5.1） */
+    val okHttpClient: OkHttpClient by lazy {
+        HttpClients.create(rootCaTrust.sslContext, rootCaTrust.trustManager, serverConfig.domain, serverConfig.host)
+    }
 
     /** XMPP 服务器地址 */
     val serverConfig: ServerConfig = ServerConfig(
