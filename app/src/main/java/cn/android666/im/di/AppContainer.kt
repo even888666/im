@@ -16,7 +16,9 @@ import okhttp3.OkHttpClient
 import cn.android666.im.data.avatar.AvatarRepository
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
+import cn.android666.im.data.file.FileDownloader
 import cn.android666.im.data.file.FileUploader
+import cn.android666.im.data.file.MediaCache
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.ChatStates
 import cn.android666.im.data.message.IncomingMessageHandler
@@ -251,6 +253,16 @@ class AppContainer(context: Context) {
             (sessionManager.state.value as? SessionState.Ready)?.capabilities?.maxUploadFileSize
         })
     }
+
+    /** 文件下载（断点续传、校验） */
+    val fileDownloader: FileDownloader by lazy { FileDownloader(okHttpClient) }
+
+    /**
+     * 当前账号的媒体缓存（`{cacheDir}/media/{工号}`，决策记录 A126）。
+     *
+     * @return 缓存；未登录时为 null
+     */
+    fun mediaCache(): MediaCache? = userDatabaseHolder.username?.let { MediaCache(File(appContext.cacheDir, "media/$it")) }
 
     /** 撤回 */
     val retractions: Retractions by lazy {
