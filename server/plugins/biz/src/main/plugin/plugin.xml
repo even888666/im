@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    业务扩展插件（biz）的描述文件。@VERSION@ 由构建脚本替换为插件版本。
+    协议见《三端协议规范.md》§6.4（敏感词）、§8.4（撤回校验），开发计划 4.19 ~ 4.21；群聊扩展（M6）、诊断上报（M8）之后加入。
+-->
+<plugin>
+    <class>cn.android666.im.server.biz.BizPlugin</class>
+    <name>IM 业务扩展</name>
+    <description>撤回时限与权限校验、敏感词过滤</description>
+    <author>android666</author>
+    <version>@VERSION@</version>
+    <date>2026-10-13</date>
+    <minServerVersion>5.0.0</minServerVersion>
+    <!-- 建表脚本：database/biz_{数据库类型}.sql；升级表结构时 databaseVersion 加 1 并提供 database/upgrade/{版本}/ 脚本 -->
+    <databaseKey>biz</databaseKey>
+    <databaseVersion>1</databaseVersion>
+    <!-- 管理后台的表单提交需要校验 csrf 参数（PluginServlet 自动校验） -->
+    <csrfProtectionEnabled>true</csrfProtectionEnabled>
+
+    <adminconsole>
+        <tab id="tab-server">
+            <sidebar id="sidebar-biz" name="IM 业务">
+                <item id="biz-sensitive-words" name="敏感词" url="biz-sensitive-words.jsp"
+                      description="维护敏感词库：命中的单聊 / 群聊消息拒绝投递"/>
+            </sidebar>
+        </tab>
+    </adminconsole>
+</plugin>

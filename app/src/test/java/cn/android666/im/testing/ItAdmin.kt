@@ -72,6 +72,27 @@ object ItAdmin {
     }
 
     /**
+     * 维护 biz 插件的敏感词库（管理后台"敏感词"页面，开发计划 4.21）。
+     *
+     * @param action add（添加，words 每个一个）或 delete（删除，逐个删除）
+     * @param words 敏感词
+     * @throws IllegalStateException 操作失败
+     */
+    fun sensitiveWords(action: String, words: List<String>) {
+        login()
+        val targets = if (action == "add") listOf(words.joinToString("\n")) else words
+        for (value in targets) {
+            val page = get("/plugins/biz/biz-sensitive-words.jsp")
+            check(page.statusCode() == 200) { "打开敏感词页面失败：HTTP ${page.statusCode()}" }
+            val csrf = csrfField.find(page.body())?.groupValues?.get(1) ?: error("敏感词页面中没有 csrf 字段")
+            val form = mutableMapOf("csrf" to csrf, "action" to action)
+            if (action == "add") form["words"] = value else form["word"] = value
+            val response = post("/plugins/biz/biz-sensitive-words.jsp", form)
+            check(response.statusCode() == 302) { "敏感词操作 $action 失败：HTTP ${response.statusCode()}" }
+        }
+    }
+
+    /**
      * 发送 GET 请求。
      *
      * @param path 路径

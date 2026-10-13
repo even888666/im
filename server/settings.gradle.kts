@@ -22,3 +22,5 @@ rootProject.name = "im-server"
 // 插件放在 plugins/ 目录下，项目路径直接用插件名（避免多出一个空的 :plugins 项目）
 include(":org")
 project(":org").projectDir = file("plugins/org")
+include(":biz")
+project(":biz").projectDir = file("plugins/biz")

@@ -24,6 +24,7 @@ server/
 ├── scripts/                       # up.sh 调用的子脚本
 ├── settings.gradle.kts / build.gradle.kts / gradle/  # 自研插件的 Gradle 构建（./gradlew -p server build）
 ├── plugins/org/                   # 组织架构插件（Java），打包到 build/plugins/org.jar
+├── plugins/biz/                   # 业务扩展插件（Java）：撤回校验、敏感词过滤，打包到 build/plugins/biz.jar
 ├── testdata/employees.csv         # 开发环境的测试员工（10001 ~ 10020）
 └── org-import/                    # 组织架构导入目录（运行时创建，不提交）：放入 .xlsx / .csv 自动导入
 ```
@@ -195,3 +196,18 @@ bash server/scripts/deploy-plugins.sh   # 构建并部署到运行中的 Openfir
 
 每次修改都会使组织架构版本号加 1，客户端下次同步（登录、回到前台超过 10 分钟、下拉刷新）时拿到变更。
 变更日志保留 30 天，超过 30 天没有同步的客户端会收到全量数据。
+
+## 六、业务扩展插件（biz）
+
+自研插件（协议规范 §6.4、§8.4），构建与部署方式与 org 插件相同（`./gradlew -p server build` 同时构建两个插件，
+`deploy-plugins.sh` 部署 `server/build/plugins/` 下的全部插件）。第一次加载时自动建表（`imBizMessage`、`imBizSensitiveWord`）。
+
+| 功能 | 说明 |
+| --- | --- |
+| 敏感词过滤 | 单聊 / 群聊消息正文包含词库中的词时拒绝投递，发送方收到 `policy-violation` + `sensitive-word`；匹配时忽略大小写、空格和标点 |
+| 撤回校验 | 只能撤回自己 2 分钟内发送的消息，否则返回 `retract-timeout` / `retract-forbidden`；群主、管理员的规则在群聊（M6）中加入 |
+| 消息记录 | 每条消息的发送方和服务器时间（撤回校验用），保留 7 天，每天清理一次 |
+
+- 管理后台 → 服务器 → IM 业务 → **敏感词**：查看、批量添加（每行一个）、删除，立即生效。
+- 系统属性 `biz.retract.limitSeconds`：撤回时限（秒），默认 120，在管理后台"系统属性"中修改后立即生效。
+

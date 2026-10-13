@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    管理后台页面：PluginServlet 按 url-pattern 把 /plugins/biz/{路径} 转给对应的 Servlet。
+    与 org 插件相同：页面不用 JSP，由 Servlet 直接输出 HTML，路径以 .jsp 结尾以套用管理后台的页面框架。
+-->
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="4.0">
+    <servlet>
+        <servlet-name>BizSensitiveWordServlet</servlet-name>
+        <servlet-class>cn.android666.im.server.biz.admin.SensitiveWordServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>BizSensitiveWordServlet</servlet-name>
+        <url-pattern>/biz-sensitive-words.jsp</url-pattern>
+    </servlet-mapping>
+</web-app>
