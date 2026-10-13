@@ -7,6 +7,7 @@ import cn.android666.im.core.xmpp.LoginResult
 import cn.android666.im.core.xmpp.OwnPresence
 import cn.android666.im.core.xmpp.ServerCapabilities
 import cn.android666.im.core.xmpp.ServerTime
+import cn.android666.im.core.xmpp.UploadSlot
 import cn.android666.im.core.xmpp.RosterItem
 import cn.android666.im.core.xmpp.RosterSubscription
 import cn.android666.im.core.xmpp.XmppClient
@@ -184,6 +185,20 @@ class FakeXmppClient : XmppClient {
         calls += "avatar:set:$mimeType"
         throwPendingError()
         avatars[selfJid] = data
+    }
+
+    /** 申请过的上传槽位：文件名、大小、类型 */
+    val slotRequests = mutableListOf<Triple<String, Long, String>>()
+
+    /** 上传槽位的应答：根据文件名返回槽位，或抛出 XmppException。默认抛出 service-unavailable（没有上传服务） */
+    var slotResponder: (filename: String, size: Long, contentType: String) -> UploadSlot = { _, _, _ ->
+        throw XmppException.StanzaError("service-unavailable", null)
+    }
+
+    override suspend fun requestUploadSlot(filename: String, size: Long, contentType: String): UploadSlot {
+        calls += "slot:$filename"
+        slotRequests += Triple(filename, size, contentType)
+        return slotResponder(filename, size, contentType)
     }
 
     private val incomingFlow = MutableSharedFlow<String>(extraBufferCapacity = 256)

@@ -82,4 +82,42 @@ class HttpIT {
             untrusted.newCall(Request.Builder().url("https://${ItServer.domain}:7443/").build()).execute().close()
         }
     }
+
+    /** 5.2：App 的上传流程（SmackXmppClient 申请槽位 + FileUploader PUT）上传后可下载，文件名为 UUID */
+    @Test
+    fun fileUploader_uploadThenDownload(): Unit = kotlinx.coroutines.runBlocking {
+        val xmpp = cn.android666.im.core.xmpp.smack.SmackXmppClient(
+            serverConfig = cn.android666.im.core.xmpp.ServerConfig(domain = ItServer.domain, host = ItServer.HOST, port = ItServer.PORT),
+            trustManager = ItServer.trustManager,
+            dispatchers = object : cn.android666.im.core.common.DispatcherProvider {
+                override val io = kotlinx.coroutines.Dispatchers.IO
+                override val default = kotlinx.coroutines.Dispatchers.Default
+                override val main = kotlinx.coroutines.Dispatchers.IO
+            },
+            clock = cn.android666.im.core.common.SystemTimeClock,
+            logStanzas = { false },
+        )
+        try {
+            xmpp.login(cn.android666.im.core.xmpp.Credential(ItServer.user(7), ItServer.testUserPassword))
+            val max = xmpp.discoverCapabilities().maxUploadFileSize
+            val uploader = cn.android666.im.data.file.FileUploader(xmpp, client, maxFileSize = { max })
+            val bytes = ByteArray(300_000) { (it % 251).toByte() }
+            val file = File.createTempFile("upload-it", ".bin").apply {
+                writeBytes(bytes)
+                deleteOnExit()
+            }
+            var lastProgress = 0L
+
+            val url = uploader.upload(file, "测试文件.BIN", "application/octet-stream") { sent, _ -> lastProgress = sent }
+
+            assertThat(lastProgress).isEqualTo(bytes.size.toLong())
+            assertThat(url.substringAfterLast('/')).matches("[0-9a-f-]{36}\\.bin")
+            client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                assertThat(response.code).isEqualTo(200)
+                assertThat(response.body.bytes()).isEqualTo(bytes)
+            }
+        } finally {
+            xmpp.logout()
+        }
+    }
 }

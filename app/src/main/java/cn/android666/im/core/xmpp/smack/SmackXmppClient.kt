@@ -14,6 +14,7 @@ import cn.android666.im.core.xmpp.RosterSubscription
 import cn.android666.im.core.xmpp.ServerCapabilities
 import cn.android666.im.core.xmpp.ServerConfig
 import cn.android666.im.core.xmpp.ServerTime
+import cn.android666.im.core.xmpp.UploadSlot
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
 import cn.android666.im.core.xmpp.iq.IqRequest
@@ -409,6 +410,16 @@ class SmackXmppClient(
         manager.saveVCard(vCard)
         log.info("已设置头像：{} 字节", data.size)
     }
+
+    override suspend fun requestUploadSlot(filename: String, size: Long, contentType: String): UploadSlot =
+        request("申请上传槽位") { current ->
+            val manager = HttpFileUploadManager.getInstanceFor(current)
+            if (!manager.isUploadServiceDiscovered && !manager.discoverUploadService()) {
+                throw XmppException.StanzaError("service-unavailable", null)
+            }
+            val slot = manager.requestSlot(filename, size, contentType)
+            UploadSlot(slot.putUrl.toString(), slot.getUrl.toString(), slot.headers.orEmpty())
+        }
 
     override suspend fun sendMessage(xml: String, ackTimeoutMillis: Long): Boolean {
         val message = SmackMessages.build(xml)

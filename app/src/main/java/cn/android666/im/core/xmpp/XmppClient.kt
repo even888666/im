@@ -138,6 +138,17 @@ interface XmppClient {
     suspend fun setMyAvatar(data: ByteArray, mimeType: String)
 
     /**
+     * 申请文件上传槽位（XEP-0363，协议规范 §9）。
+     *
+     * @param filename 上传用的文件名（客户端已改为 UUID + 扩展名）
+     * @param size 文件大小（字节）
+     * @param contentType MIME 类型
+     * @return 槽位
+     * @throws XmppException 未连接、没有上传服务、服务器拒绝（如超过大小上限）
+     */
+    suspend fun requestUploadSlot(filename: String, size: Long, contentType: String): UploadSlot
+
+    /**
      * 收到的 message 报文（原始 XML，由 `core.xmpp.extension.msg.MessageCodec` 解析），包括实时消息、离线消息、
      * Carbons 抄送、MAM 补拉结果和 type='error' 的退回消息；跨越重连持续有效，按到达顺序发出。
      * 没有订阅者时到达的报文会被丢弃（漏掉的消息由 MAM 补拉找回）。

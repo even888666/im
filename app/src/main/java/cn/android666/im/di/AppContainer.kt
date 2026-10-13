@@ -16,6 +16,7 @@ import okhttp3.OkHttpClient
 import cn.android666.im.data.avatar.AvatarRepository
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
+import cn.android666.im.data.file.FileUploader
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.ChatStates
 import cn.android666.im.data.message.IncomingMessageHandler
@@ -33,6 +34,7 @@ import cn.android666.im.data.org.OrgSyncStep
 import cn.android666.im.data.settings.AppSettingsStore
 import cn.android666.im.data.session.AppVisibilityHandler
 import cn.android666.im.data.session.SessionManager
+import cn.android666.im.data.session.SessionState
 import cn.android666.im.service.notification.MessageNotifier
 import cn.android666.im.ui.chat.ChatActivity
 import cn.android666.im.ui.main.MainActivity
@@ -241,6 +243,13 @@ class AppContainer(context: Context) {
             mainIntent = { Intent(appContext, MainActivity::class.java) },
             chatIntent = { id, kind -> ChatActivity.intent(appContext, id, kind) },
         ).also { it.start(incomingMessageHandler.newMessages, conversationRepository.observeUnreadCounts(), applicationScope) }
+    }
+
+    /** 文件上传（XEP-0363）：上限取自登录后的能力发现 */
+    val fileUploader: FileUploader by lazy {
+        FileUploader(xmppClient, okHttpClient, maxFileSize = {
+            (sessionManager.state.value as? SessionState.Ready)?.capabilities?.maxUploadFileSize
+        })
     }
 
     /** 撤回 */
