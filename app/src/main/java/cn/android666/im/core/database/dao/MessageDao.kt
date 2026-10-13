@@ -266,6 +266,24 @@ interface MessageDao {
     suspend fun countIncomingAfter(conversationId: String, afterTime: Long): Int
 
     /**
+     * 按 rowId 批量查询（多选操作）。
+     *
+     * @param rowIds rowId 列表（调用方保证不超过 SQLite 的参数上限）
+     * @return 消息（按时间顺序）
+     */
+    @Query("SELECT * FROM message WHERE rowId IN (:rowIds) ORDER BY serverTime, rowId")
+    suspend fun getByRowIds(rowIds: List<Long>): List<MessageEntity>
+
+    /**
+     * 按 rowId 批量删除（本地删除，开发计划 4.17）。
+     *
+     * @param rowIds rowId 列表
+     * @return 删除的条数
+     */
+    @Query("DELETE FROM message WHERE rowId IN (:rowIds)")
+    suspend fun deleteByRowIds(rowIds: List<Long>): Int
+
+    /**
      * 删除会话的全部消息（删除会话时）。
      *
      * @param conversationId 会话 ID

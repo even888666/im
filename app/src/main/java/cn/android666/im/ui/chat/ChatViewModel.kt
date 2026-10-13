@@ -115,6 +115,63 @@ class ChatViewModel(
         }
     }
 
+    private val selectionState = MutableStateFlow<Set<Long>?>(null)
+
+    /** 多选模式中已选中的消息 rowId；不在多选模式时为 null（开发计划 4.17） */
+    val selection: StateFlow<Set<Long>?> = selectionState.asStateFlow()
+
+    /** 等待确认删除的消息 rowId（确认框在页面重建后仍在，ID 保存在 ViewModel 中） */
+    var pendingDelete: Set<Long>? = null
+
+    /**
+     * 进入多选模式并选中一条消息。
+     *
+     * @param rowId 消息 rowId
+     */
+    fun startSelection(rowId: Long) {
+        selectionState.value = setOf(rowId)
+    }
+
+    /**
+     * 多选模式中切换一条消息的选中状态；最多选 100 条。
+     *
+     * @param rowId 消息 rowId
+     */
+    fun toggleSelection(rowId: Long) {
+        val current = selectionState.value ?: return
+        selectionState.value = when {
+            rowId in current -> current - rowId
+            current.size >= MessageRepository.MAX_SELECTION -> {
+                eventChannel.trySend(ChatEvent.Toast(R.string.chat_selection_limit))
+                current
+            }
+            else -> current + rowId
+        }
+    }
+
+    /** 退出多选模式 */
+    fun cancelSelection() {
+        selectionState.value = null
+    }
+
+    /**
+     * 删除本地消息（多选的、或长按菜单中的一条），完成后退出多选模式。
+     *
+     * @param rowIds 消息 rowId
+     */
+    fun delete(rowIds: Set<Long>) {
+        viewModelScope.launch {
+            try {
+                messages.deleteLocal(rowIds)
+                selectionState.value = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("删除消息失败", e)
+            }
+        }
+    }
+
     /**
      * 读取草稿（打开聊天页时恢复到输入框，开发计划 4.17）。
      *
@@ -192,7 +249,7 @@ class ChatViewModel(
     }
 
     /**
-     * 长按消息时可用的操作：文字消息可复制；未撤回的消息可引用；本人 2 分钟内发出的消息可撤回。
+     * 长按消息时可用的操作：文字消息可复制；未撤回的消息可引用；都可以多选、删除（本地）；本人 2 分钟内发出的消息可撤回。
      *
      * @param message 消息
      * @param now 当前服务器时间（毫秒）
@@ -201,7 +258,9 @@ class ChatViewModel(
     fun actionsFor(message: ChatMessage, now: Long = messages.serverNowMillis()): List<String> = buildList {
         if (!message.retracted && message.content is MessageContent.Text) add(MessageActionsDialogFragment.ACTION_COPY)
         if (!message.retracted) add(MessageActionsDialogFragment.ACTION_REPLY)
+        add(MessageActionsDialogFragment.ACTION_SELECT)
         if (message.canRetract(now)) add(MessageActionsDialogFragment.ACTION_RETRACT)
+        add(MessageActionsDialogFragment.ACTION_DELETE)
     }
 
     /**

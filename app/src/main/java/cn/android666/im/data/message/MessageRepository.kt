@@ -243,6 +243,50 @@ class MessageRepository(
     }
 
     /**
+     * 删除本地消息（开发计划 4.17，只删除本机，服务器存档和对方不受影响）。被删除的是会话最后一条时，
+     * 预览改为剩下的最后一条（没有剩余消息时清空）。
+     *
+     * @param rowIds 消息 rowId（最多 [MAX_SELECTION] 条）
+     * @return 删除的条数
+     */
+    suspend fun deleteLocal(rowIds: Collection<Long>): Int {
+        if (rowIds.isEmpty()) return 0
+        val ids = rowIds.take(MAX_SELECTION)
+        val db = databases.require()
+        return db.withTransaction {
+            val dao = db.messageDao()
+            val conversationIds = dao.getByRowIds(ids).map { it.conversationId }.toSet()
+            val deleted = dao.deleteByRowIds(ids)
+            for (id in conversationIds) {
+                val conversation = db.conversationDao().get(id) ?: continue
+                if (conversation.lastMsgRowId == null || conversation.lastMsgRowId !in ids) continue
+                val last = dao.last(id)
+                db.conversationDao().upsert(
+                    conversation.copy(
+                        lastMsgRowId = last?.rowId,
+                        lastMsgPreview = last?.let(::previewOf).orEmpty(),
+                        lastMsgTime = last?.serverTime ?: conversation.lastMsgTime,
+                    ),
+                )
+            }
+            log.info("本地删除消息 {} 条", deleted)
+            deleted
+        }
+    }
+
+    /**
+     * 消息在会话列表中的预览：已撤回的显示撤回提示，其余为正文 / 降级文本。
+     *
+     * @param message 消息
+     * @return 预览文字
+     */
+    private fun previewOf(message: MessageEntity): String = when {
+        !message.retracted -> message.body
+        message.direction == MessageEntity.DIRECTION_OUT -> Retractions.SELF_NOTICE
+        else -> Retractions.PEER_NOTICE
+    }
+
+    /**
      * 按会话和消息 ID 查询消息。
      *
      * @param conversationId 会话 ID
@@ -401,6 +445,9 @@ class MessageRepository(
 
         /** 文本消息长度上限（协议规范 §1.6，按 Unicode 码点计） */
         const val MAX_TEXT_LENGTH = 5000
+
+        /** 多选操作（删除、转发）一次最多处理的消息数（协议规范 §1.6：合并转发最多 100 条） */
+        const val MAX_SELECTION = 100
 
         /** 聊天页每页加载的消息数 */
         private const val PAGE_SIZE = 30

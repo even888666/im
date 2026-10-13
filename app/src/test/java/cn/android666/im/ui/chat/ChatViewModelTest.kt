@@ -29,6 +29,7 @@ import cn.android666.im.testing.FakeClock
 import cn.android666.im.testing.FakeXmppClient
 import cn.android666.im.testing.MainDispatcherRule
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -200,7 +201,7 @@ class ChatViewModelTest {
         assertThat(db.messageDao().getByRowId(row)!!.status).isEqualTo(MessageEntity.STATUS_SENDING)
     }
 
-    /** 长按菜单：文字可复制；未撤回的可引用；本人 2 分钟内已发出的可撤回 */
+    /** 长按菜单：文字可复制；未撤回的可引用；都可多选、删除；本人 2 分钟内已发出的可撤回 */
     @Test
     fun actionsFor_rules() = runTest(mainDispatcherRule.testDispatcher) {
         val (vm, _) = newVm()
@@ -212,13 +213,16 @@ class ChatViewModelTest {
         val now = 1_000_000L
         val copy = MessageActionsDialogFragment.ACTION_COPY
         val reply = MessageActionsDialogFragment.ACTION_REPLY
+        val select = MessageActionsDialogFragment.ACTION_SELECT
         val retract = MessageActionsDialogFragment.ACTION_RETRACT
-        assertThat(vm.actionsFor(msg(true, MessageState.SENT, now - 60_000), now)).containsExactly(copy, reply, retract).inOrder()
-        assertThat(vm.actionsFor(msg(true, MessageState.READ, now - 121_000), now)).containsExactly(copy, reply)
-        assertThat(vm.actionsFor(msg(true, MessageState.FAILED, now), now)).containsExactly(copy, reply)
-        assertThat(vm.actionsFor(msg(true, MessageState.SENDING, now), now)).containsExactly(copy, reply)
-        assertThat(vm.actionsFor(msg(false, MessageState.RECEIVED, now), now)).containsExactly(copy, reply)
-        assertThat(vm.actionsFor(msg(true, MessageState.SENT, now, retracted = true), now)).isEmpty()
+        val delete = MessageActionsDialogFragment.ACTION_DELETE
+        assertThat(vm.actionsFor(msg(true, MessageState.SENT, now - 60_000), now))
+            .containsExactly(copy, reply, select, retract, delete).inOrder()
+        assertThat(vm.actionsFor(msg(true, MessageState.READ, now - 121_000), now)).containsExactly(copy, reply, select, delete).inOrder()
+        assertThat(vm.actionsFor(msg(true, MessageState.FAILED, now), now)).containsExactly(copy, reply, select, delete).inOrder()
+        assertThat(vm.actionsFor(msg(true, MessageState.SENDING, now), now)).containsExactly(copy, reply, select, delete).inOrder()
+        assertThat(vm.actionsFor(msg(false, MessageState.RECEIVED, now), now)).containsExactly(copy, reply, select, delete).inOrder()
+        assertThat(vm.actionsFor(msg(true, MessageState.SENT, now, retracted = true), now)).containsExactly(select, delete).inOrder()
     }
 
     /** 4.15：引用对方的消息 → 引用条显示姓名与原文 → 发送后带 reply，引用条清空；列表中显示引用预览 */
@@ -280,6 +284,55 @@ class ChatViewModelTest {
         assertThat(vm.reply.value!!.senderName).isNull()
         vm.cancelReply()
         assertThat(vm.reply.value).isNull()
+    }
+
+    /** 4.17 多选：进入、切换、上限 100、退出 */
+    @Test
+    fun selection() = runTest(mainDispatcherRule.testDispatcher) {
+        val (vm, _) = newVm()
+
+        vm.toggleSelection(1)
+        assertThat(vm.selection.value).isNull()
+
+        vm.startSelection(1)
+        vm.toggleSelection(2)
+        vm.toggleSelection(1)
+        assertThat(vm.selection.value).containsExactly(2L)
+
+        vm.events.test {
+            (3L..102L).forEach(vm::toggleSelection)
+            assertThat(vm.selection.value).hasSize(100)
+            assertThat(awaitItem()).isEqualTo(ChatEvent.Toast(R.string.chat_selection_limit))
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        vm.cancelSelection()
+        assertThat(vm.selection.value).isNull()
+    }
+
+    /** 4.17 本地删除：消息删除、退出多选；删除的是最后一条时预览改为剩下的最后一条 */
+    @Test
+    fun deleteLocal_updatesPreview() = runTest(mainDispatcherRule.testDispatcher) {
+        val first = insert("m1", 1_000)
+        val last = insert("m2", 2_000)
+        db.conversationDao().upsert(ConversationEntity(BOB, ConversationEntity.TYPE_SINGLE, last, "b-m2", 2_000))
+        val (vm, _) = newVm()
+
+        vm.startSelection(last)
+        vm.delete(setOf(last))
+        runCurrent()
+
+        assertThat(db.messageDao().get(BOB, "m2")).isNull()
+        assertThat(vm.selection.value).isNull()
+        val conversation = db.conversationDao().get(BOB)!!
+        assertThat(conversation.lastMsgRowId).isEqualTo(first)
+        assertThat(conversation.lastMsgPreview).isEqualTo("b-m1")
+
+        // 删除最后剩下的：预览清空，会话不再显示在列表中
+        vm.delete(setOf(first))
+        runCurrent()
+        assertThat(db.conversationDao().get(BOB)!!.lastMsgRowId).isNull()
+        assertThat(ConversationRepository(holder).observeConversations().first()).isEmpty()
     }
 
     /** 撤回未发出（未登录时一直是发送中）的消息：不允许，不提示 */

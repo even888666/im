@@ -27,6 +27,7 @@ import cn.android666.im.ui.conversation.TimeLabel
  * @property onResend 点击发送失败的图标（重发）
  * @property onLongClick 长按消息气泡（操作菜单）
  * @property selfJid 本人 bare JID（引用本人的消息时显示"我"）
+ * @property onToggle 多选模式中点击消息（切换选中）
  */
 class ChatAdapter(
     private val showReadState: Boolean,
@@ -34,7 +35,16 @@ class ChatAdapter(
     private val onResend: (ChatMessage) -> Unit,
     private val onLongClick: (ChatMessage) -> Unit = {},
     private val selfJid: String? = null,
+    private val onToggle: (ChatMessage) -> Unit = {},
 ) : PagingDataAdapter<ChatListItem, RecyclerView.ViewHolder>(DIFF) {
+
+    /** 多选模式中已选中的消息 rowId；不在多选模式时为 null。修改后刷新全部列表项 */
+    var selection: Set<Long>? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyItemRangeChanged(0, itemCount)
+        }
 
     /**
      * 时间分隔。
@@ -125,12 +135,13 @@ class ChatAdapter(
      * @param message 消息
      */
     private fun bindIn(b: ItemChatInBinding, message: ChatMessage) {
+        bindSelection(b.root, b.check, message)
         val name = message.senderName ?: message.senderJid.substringBefore('@')
         b.avatar.bind(name, message.senderJid, message.senderAvatarHash)
         b.bubble.text = message.body
         b.bubble.setOnLongClickListener {
-            onLongClick(message)
-            true
+            if (selection == null) onLongClick(message)
+            selection == null
         }
         bindQuote(b.quote, message)
     }
@@ -142,12 +153,13 @@ class ChatAdapter(
      * @param message 消息
      */
     private fun bindOut(b: ItemChatOutBinding, message: ChatMessage) {
+        bindSelection(b.root, b.check, message)
         val name = message.senderName ?: message.senderJid.substringBefore('@')
         b.avatar.bind(name, message.senderJid, message.senderAvatarHash)
         b.bubble.text = message.body
         b.bubble.setOnLongClickListener {
-            onLongClick(message)
-            true
+            if (selection == null) onLongClick(message)
+            selection == null
         }
         bindQuote(b.quote, message)
         b.sending.isVisible = message.state == MessageState.SENDING
@@ -159,6 +171,25 @@ class ChatAdapter(
         val error = errorText(message)
         b.error.isVisible = error != null
         error?.let(b.error::setText)
+    }
+
+    /**
+     * 多选模式：显示勾选框，点击整行切换选中；非多选模式隐藏勾选框。
+     *
+     * @param root 列表项根布局
+     * @param check 勾选框
+     * @param message 消息
+     */
+    private fun bindSelection(root: android.view.View, check: android.widget.CheckBox, message: ChatMessage) {
+        val selected = selection
+        check.isVisible = selected != null
+        check.isChecked = selected?.contains(message.rowId) == true
+        if (selected != null) {
+            root.setOnClickListener { onToggle(message) }
+        } else {
+            root.setOnClickListener(null)
+            root.isClickable = false
+        }
     }
 
     /**

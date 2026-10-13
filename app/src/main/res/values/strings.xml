@@ -132,6 +132,13 @@
     <string name="chat_peer_typing">对方正在输入…</string>
     <string name="chat_action_copy">复制</string>
     <string name="chat_action_reply">引用</string>
+    <string name="chat_action_select">多选</string>
+    <string name="chat_action_delete">删除</string>
+    <string name="chat_forward_each">逐条转发</string>
+    <string name="chat_forward_merged">合并转发</string>
+    <string name="chat_selected_count">已选择 %d 条</string>
+    <string name="chat_delete_confirm">删除后只在本机消失，对方仍能看到</string>
+    <string name="chat_selection_limit">最多选择 100 条</string>
     <string name="chat_quote_cancel">取消引用</string>
     <string name="chat_quote_format">%1$s：%2$s</string>
     <string name="chat_quote_missing">原消息不可见</string>

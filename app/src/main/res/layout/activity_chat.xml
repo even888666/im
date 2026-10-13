@@ -21,6 +21,41 @@
         android:clipToPadding="false"
         android:paddingBottom="8dp" />
 
+    <!-- 多选模式的操作栏（开发计划 4.16、4.17），代替输入栏 -->
+    <LinearLayout
+        android:id="@+id/selectionBar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="?attr/colorSurfaceContainer"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/forwardEach"
+            style="?attr/borderlessButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/chat_forward_each" />
+
+        <Button
+            android:id="@+id/forwardMerged"
+            style="?attr/borderlessButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/chat_forward_merged" />
+
+        <Button
+            android:id="@+id/deleteSelected"
+            style="?attr/borderlessButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/chat_action_delete" />
+    </LinearLayout>
+
     <!-- 正在引用的消息（开发计划 4.15），点叉取消 -->
     <LinearLayout
         android:id="@+id/quoteBar"
@@ -53,6 +88,7 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/inputBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?attr/colorSurfaceContainer"

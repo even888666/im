@@ -11,6 +11,16 @@
     android:paddingEnd="64dp"
     android:paddingBottom="6dp">
 
+    <!-- 多选模式的勾选框（开发计划 4.17） -->
+    <CheckBox
+        android:id="@+id/check"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone" />
+
     <cn.android666.im.ui.widget.AvatarView
         android:id="@+id/avatar"
         android:layout_width="40dp"

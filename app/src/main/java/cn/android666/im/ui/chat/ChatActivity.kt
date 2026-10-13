@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -81,7 +82,7 @@ class ChatActivity : AppCompatActivity() {
         log.info("打开聊天页：{}（{}）", viewModel.conversationId, viewModel.kind)
 
         binding.toolbar.setNavigationOnClickListener { finish() }
-        collectWhenStarted(viewModel.peerName) { binding.toolbar.title = title(it) }
+        collectWhenStarted(viewModel.peerName) { if (viewModel.selection.value == null) binding.toolbar.title = title(it) }
 
         val adapter = ChatAdapter(
             showReadState = viewModel.kind == ConversationKind.SINGLE,
@@ -102,6 +103,7 @@ class ChatActivity : AppCompatActivity() {
                 MessageActionsDialogFragment.show(supportFragmentManager, message.rowId, message.body, viewModel.actionsFor(message))
             },
             selfJid = appContainer.selfJid(),
+            onToggle = { viewModel.toggleSelection(it.rowId) },
         )
         val layoutManager = LinearLayoutManager(this).apply { reverseLayout = true }
         binding.list.layoutManager = layoutManager
@@ -136,6 +138,8 @@ class ChatActivity : AppCompatActivity() {
                 MessageActionsDialogFragment.ACTION_COPY -> copy(result.getString(MessageActionsDialogFragment.RESULT_TEXT).orEmpty())
                 MessageActionsDialogFragment.ACTION_RETRACT -> viewModel.retract(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
                 MessageActionsDialogFragment.ACTION_REPLY -> viewModel.startReply(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
+                MessageActionsDialogFragment.ACTION_SELECT -> viewModel.startSelection(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
+                MessageActionsDialogFragment.ACTION_DELETE -> confirmDelete(setOf(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID)))
             }
         }
 
@@ -156,10 +160,34 @@ class ChatActivity : AppCompatActivity() {
                 }
             }
         }
+        // 多选模式：标题显示已选条数，操作栏代替输入栏，返回键退出多选
+        val exitSelection = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() = viewModel.cancelSelection()
+        }
+        onBackPressedDispatcher.addCallback(this, exitSelection)
+        binding.deleteSelected.setOnClickListener { viewModel.selection.value?.takeIf { it.isNotEmpty() }?.let(::confirmDelete) }
+        // 转发见开发计划 4.16
+        binding.forwardEach.isVisible = false
+        binding.forwardMerged.isVisible = false
+        supportFragmentManager.setFragmentResultListener(REQUEST_DELETE, this) { _, result ->
+            val ids = viewModel.pendingDelete
+            viewModel.pendingDelete = null
+            if (ids != null && result.getBoolean(MessageDialogFragment.RESULT_POSITIVE)) viewModel.delete(ids)
+        }
+        collectWhenStarted(viewModel.selection) { selected ->
+            adapter.selection = selected
+            exitSelection.isEnabled = selected != null
+            binding.selectionBar.isVisible = selected != null
+            binding.inputBar.isVisible = selected == null
+            binding.deleteSelected.isEnabled = !selected.isNullOrEmpty()
+            binding.toolbar.title = if (selected != null) getString(R.string.chat_selected_count, selected.size) else title(viewModel.peerName.value)
+            if (selected != null) binding.quoteBar.isVisible = false
+        }
+
         // 引用条
         binding.quoteClose.setOnClickListener { viewModel.cancelReply() }
         collectWhenStarted(viewModel.reply) { draft ->
-            binding.quoteBar.isVisible = draft != null
+            binding.quoteBar.isVisible = draft != null && viewModel.selection.value == null
             if (draft != null) {
                 val name = draft.senderName ?: getString(R.string.chat_quote_self)
                 binding.quoteText.text = getString(R.string.chat_quote_format, name, draft.text)
@@ -179,6 +207,24 @@ class ChatActivity : AppCompatActivity() {
                 is ChatEvent.Toast -> Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /**
+     * 删除前确认（只删除本机的消息）。
+     *
+     * @param rowIds 消息 rowId
+     */
+    private fun confirmDelete(rowIds: Set<Long>) {
+        viewModel.pendingDelete = rowIds
+        MessageDialogFragment.show(
+            fragmentManager = supportFragmentManager,
+            requestKey = REQUEST_DELETE,
+            title = 0,
+            message = R.string.chat_delete_confirm,
+            positive = R.string.chat_action_delete,
+            negative = R.string.cancel,
+            cancelable = true,
+        )
     }
 
     /**
@@ -235,6 +281,9 @@ class ChatActivity : AppCompatActivity() {
 
         /** 重发确认框的结果 key */
         private const val REQUEST_RESEND = "resend"
+
+        /** 删除确认框的结果 key */
+        private const val REQUEST_DELETE = "deleteMessages"
 
         /**
          * 创建打开聊天页的 Intent（通知点击等场景也使用）。

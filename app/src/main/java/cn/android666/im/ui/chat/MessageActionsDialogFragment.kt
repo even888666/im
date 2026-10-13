@@ -10,7 +10,7 @@ import cn.android666.im.R
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
- * 长按消息弹出的操作菜单（复制、引用、撤回）。结果通过 Fragment Result API 返回：
+ * 长按消息弹出的操作菜单（复制、引用、多选、撤回、删除）。结果通过 Fragment Result API 返回：
  * requestKey 为 [REQUEST_KEY]，Bundle 中 [RESULT_ACTION] 为选中的操作、[RESULT_ROW_ID] 为消息 rowId、[RESULT_TEXT] 为消息文字。
  */
 class MessageActionsDialogFragment : DialogFragment() {
@@ -29,6 +29,8 @@ class MessageActionsDialogFragment : DialogFragment() {
                 when (it) {
                     ACTION_RETRACT -> R.string.chat_action_retract
                     ACTION_REPLY -> R.string.chat_action_reply
+                    ACTION_SELECT -> R.string.chat_action_select
+                    ACTION_DELETE -> R.string.chat_action_delete
                     else -> R.string.chat_action_copy
                 },
             )
@@ -51,7 +53,7 @@ class MessageActionsDialogFragment : DialogFragment() {
         /** 结果的 key */
         const val REQUEST_KEY = "messageActions"
 
-        /** 结果：操作（[ACTION_COPY] / [ACTION_REPLY] / [ACTION_RETRACT]） */
+        /** 结果：操作（ACTION_*） */
         const val RESULT_ACTION = "action"
 
         /** 结果：消息 rowId */
@@ -68,6 +70,12 @@ class MessageActionsDialogFragment : DialogFragment() {
 
         /** 操作：引用 */
         const val ACTION_REPLY = "reply"
+
+        /** 操作：多选 */
+        const val ACTION_SELECT = "select"
+
+        /** 操作：删除（本地） */
+        const val ACTION_DELETE = "delete"
 
         private const val ARG_ACTIONS = "actions"
         private const val ARG_ROW_ID = "rowId"

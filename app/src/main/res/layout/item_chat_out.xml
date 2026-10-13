@@ -11,6 +11,16 @@
     android:paddingEnd="12dp"
     android:paddingBottom="6dp">
 
+    <!-- 多选模式的勾选框（开发计划 4.17） -->
+    <CheckBox
+        android:id="@+id/check"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone" />
+
     <!-- 占满头像左侧的剩余宽度，内容靠右：状态紧挨着气泡 -->
     <LinearLayout
         android:layout_width="0dp"
