@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 语音播放中的动画：声波逐级出现（开发计划 5.5） -->
+<animation-list xmlns:android="http://schemas.android.com/apk/res/android"
+    android:oneshot="false">
+    <item
+        android:drawable="@drawable/ic_voice_wave_1"
+        android:duration="300" />
+    <item
+        android:drawable="@drawable/ic_voice_wave_2"
+        android:duration="300" />
+    <item
+        android:drawable="@drawable/ic_voice_wave_3"
+        android:duration="300" />
+</animation-list>

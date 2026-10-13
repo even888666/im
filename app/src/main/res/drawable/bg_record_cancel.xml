@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 录音浮层在取消区域时的背景：半透明红色圆角矩形 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#CCB3261E" />
+    <corners android:radius="12dp" />
+</shape>

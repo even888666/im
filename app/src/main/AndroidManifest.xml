@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 开机自启（功能清单 §3） -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 语音消息录音（开发计划 5.5），按住说话时运行时申请 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 保存图片到相册（开发计划 5.4）：Android 10 起通过 MediaStore 写入，不需要此权限 -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"

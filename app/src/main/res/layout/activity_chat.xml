@@ -30,6 +30,11 @@
             android:id="@+id/watermark"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
+
+        <!-- 录音浮层（开发计划 5.5） -->
+        <include
+            android:id="@+id/recordOverlay"
+            layout="@layout/view_record_overlay" />
     </FrameLayout>
 
     <!-- 多选模式的操作栏（开发计划 4.16、4.17），代替输入栏 -->
@@ -109,6 +114,29 @@
         android:paddingTop="6dp"
         android:paddingEnd="4dp"
         android:paddingBottom="6dp">
+
+        <!-- 语音 / 键盘输入切换（开发计划 5.5） -->
+        <ImageButton
+            android:id="@+id/voiceToggle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/chat_voice_input"
+            android:src="@drawable/ic_mic" />
+
+        <!-- 按住说话（语音输入模式时代替输入框） -->
+        <TextView
+            android:id="@+id/holdToTalk"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_hold_to_talk"
+            android:gravity="center"
+            android:text="@string/chat_voice_hold"
+            android:textAppearance="?attr/textAppearanceTitleSmall"
+            android:visibility="gone" />
 
         <!-- 更多：相册、拍照（开发计划 5.4） -->
         <ImageButton

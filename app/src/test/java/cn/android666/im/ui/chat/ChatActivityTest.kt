@@ -159,6 +159,40 @@ class ChatActivityTest {
         }
     }
 
+    /** 5.5 收到的语音：显示语音气泡（秒数、未听红点），文字气泡隐藏；语音 / 键盘切换 */
+    @Test
+    fun voiceMessage_shownAndInputToggle() {
+        runBlocking {
+            val content = MessageContent.Voice(FileInfo("https://im.example.com/upload/v.m4a", "voice.m4a", 10, "audio/mp4", duration = 5_300))
+            app.container.userDatabaseHolder.require().messageDao().insert(
+                MessageEntity(
+                    msgId = "voice", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "voice",
+                    body = "[语音]", contentJson = MessageJson.encodeContent(content), status = MessageEntity.STATUS_RECEIVED, serverTime = 1,
+                ),
+            )
+        }
+        val intent = ChatActivity.intent(app, BOB, ConversationKind.SINGLE)
+        ActivityScenario.launch<ChatActivity>(intent).use { scenario ->
+            lateinit var list: RecyclerView
+            scenario.onActivity { list = it.findViewById(R.id.list) }
+            waitUntil { list.findViewHolderForAdapterPosition(0)?.itemView?.findViewById<android.view.View>(R.id.voiceBox)?.isVisible == true }
+            scenario.onActivity { activity ->
+                val item = list.findViewHolderForAdapterPosition(0)!!.itemView
+                assertThat(item.findViewById<TextView>(R.id.bubble).isVisible).isFalse()
+                assertThat(item.findViewById<android.view.View>(R.id.imageBox).isVisible).isFalse()
+                assertThat(item.findViewById<TextView>(R.id.duration).text.toString()).isEqualTo("5″")
+                assertThat(item.findViewById<android.view.View>(R.id.unplayed).isVisible).isTrue()
+
+                // 切换到语音输入：输入框换成"按住说话"
+                activity.findViewById<android.view.View>(R.id.voiceToggle).performClick()
+                assertThat(activity.findViewById<android.view.View>(R.id.holdToTalk).isVisible).isTrue()
+                assertThat(activity.findViewById<android.view.View>(R.id.input).isVisible).isFalse()
+                activity.findViewById<android.view.View>(R.id.voiceToggle).performClick()
+                assertThat(activity.findViewById<android.view.View>(R.id.input).isVisible).isTrue()
+            }
+        }
+    }
+
     private companion object {
         const val BOB = "10002@im.example.com"
     }

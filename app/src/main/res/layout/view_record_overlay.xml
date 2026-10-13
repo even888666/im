@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 录音浮层（开发计划 5.5）：录音时显示在聊天列表中央；上滑到取消区域时变红并提示"松开手指，取消发送" -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="160dp"
+    android:layout_height="160dp"
+    android:layout_gravity="center"
+    android:background="@drawable/bg_record_overlay"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:visibility="gone"
+    tools:visibility="visible">
+
+    <ImageView
+        android:id="@+id/icon"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_mic"
+        app:tint="@android:color/white" />
+
+    <!-- 已录时长或倒计时 -->
+    <TextView
+        android:id="@+id/time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textAppearance="?attr/textAppearanceTitleMedium"
+        android:textColor="@android:color/white"
+        tools:text="0:05" />
+
+    <TextView
+        android:id="@+id/hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="@android:color/white"
+        tools:text="手指上滑，取消发送" />
+</LinearLayout>

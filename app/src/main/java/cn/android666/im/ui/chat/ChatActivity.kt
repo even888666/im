@@ -1,13 +1,19 @@
 package cn.android666.im.ui.chat
 
 import android.content.ClipData
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -16,6 +22,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
@@ -27,6 +34,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import cn.android666.im.R
 import cn.android666.im.core.log.Logs
+import cn.android666.im.core.media.AndroidVoiceRecorder
 import cn.android666.im.core.media.UriImporter
 import cn.android666.im.data.message.ChatMessage
 import cn.android666.im.data.conversation.ConversationKind
@@ -78,6 +86,10 @@ class ChatActivity : AppCompatActivity() {
                     },
                     media = container.mediaSender,
                     importer = UriImporter(applicationContext, File(cacheDir, IMPORT_DIR), container.dispatchers.io),
+                    voiceRecorder = AndroidVoiceRecorder(applicationContext),
+                    voiceDir = File(cacheDir, VOICE_DIR),
+                    voicePlayback = container.voicePlayback,
+                    settings = container.appSettingsStore,
                 )
             }
         }
@@ -129,6 +141,7 @@ class ChatActivity : AppCompatActivity() {
             selfJid = appContainer.selfJid(),
             onToggle = { viewModel.toggleSelection(it.rowId) },
             onOpen = ::open,
+            onVoice = { viewModel.playVoice(it.rowId) },
         )
         val layoutManager = LinearLayoutManager(this).apply { reverseLayout = true }
         binding.list.layoutManager = layoutManager
@@ -240,6 +253,100 @@ class ChatActivity : AppCompatActivity() {
         }
         pendingPhoto = savedInstanceState?.getString(STATE_PHOTO)?.let(::File)
         binding.more.setOnClickListener { showMoreMenu() }
+        setupVoice(adapter, savedInstanceState?.getBoolean(STATE_VOICE_MODE) == true)
+    }
+
+    /** 是否处于语音输入模式（输入框换成"按住说话"） */
+    private var voiceMode = false
+
+    /** 申请麦克风权限（按住说话时）：同意后需要再次按住才开始录音 */
+    private val requestAudio = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) Toast.makeText(this, R.string.chat_voice_permission, Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * 语音消息（开发计划 5.5）：语音 / 键盘切换、按住说话、录音浮层、播放动画、听筒菜单。
+     *
+     * @param adapter 消息列表适配器
+     * @param restoreVoiceMode 页面重建前是否在语音输入模式
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupVoice(adapter: ChatAdapter, restoreVoiceMode: Boolean) {
+        setVoiceMode(restoreVoiceMode)
+        binding.voiceToggle.setOnClickListener { setVoiceMode(!voiceMode) }
+        val cancelDistance = CANCEL_DISTANCE_DP * resources.displayMetrics.density
+        binding.holdToTalk.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        requestAudio.launch(Manifest.permission.RECORD_AUDIO)
+                        return@setOnTouchListener false
+                    }
+                    view.parent?.requestDisallowInterceptTouchEvent(true)
+                    view.isPressed = true
+                    viewModel.onVoicePress()
+                }
+                // 手指上滑超过一定距离（离开按钮上沿）进入取消区域
+                MotionEvent.ACTION_MOVE -> viewModel.onVoiceMove(event.y < -cancelDistance)
+                MotionEvent.ACTION_UP -> {
+                    view.isPressed = false
+                    viewModel.onVoiceRelease()
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    view.isPressed = false
+                    viewModel.onVoiceAbort()
+                }
+            }
+            true
+        }
+        val overlay = binding.recordOverlay
+        collectWhenStarted(viewModel.recording) { state ->
+            overlay.root.isVisible = state != null
+            binding.holdToTalk.setText(if (state != null) R.string.chat_voice_release else R.string.chat_voice_hold)
+            // 录音时保持屏幕常亮
+            if (state != null) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (state == null) return@collectWhenStarted
+            val seconds = (state.elapsedMillis / 1000).toInt()
+            overlay.time.text = state.countdown?.let { getString(R.string.chat_voice_countdown, it) }
+                ?: getString(R.string.chat_voice_elapsed, seconds / 60, seconds % 60)
+            overlay.hint.setText(if (state.cancelZone) R.string.chat_voice_release_cancel else R.string.chat_voice_slide_cancel)
+            overlay.icon.setImageResource(if (state.cancelZone) R.drawable.ic_undo else R.drawable.ic_mic)
+            overlay.root.setBackgroundResource(if (state.cancelZone) R.drawable.bg_record_cancel else R.drawable.bg_record_overlay)
+        }
+        collectWhenStarted(viewModel.playingVoice) { adapter.playingVoice = it }
+        // 标题栏菜单：听筒播放
+        binding.toolbar.inflateMenu(R.menu.chat)
+        val earpieceItem = binding.toolbar.menu.findItem(R.id.voiceEarpiece)
+        binding.toolbar.setOnMenuItemClickListener { item ->
+            if (item.itemId == R.id.voiceEarpiece) {
+                viewModel.setVoiceEarpiece(!item.isChecked)
+                true
+            } else {
+                false
+            }
+        }
+        collectWhenStarted(viewModel.voiceEarpiece) { earpieceItem.isChecked = it }
+    }
+
+    /**
+     * 切换语音 / 键盘输入。
+     *
+     * @param voice true 为语音输入
+     */
+    private fun setVoiceMode(voice: Boolean) {
+        voiceMode = voice
+        binding.holdToTalk.isVisible = voice
+        binding.input.isVisible = !voice
+        binding.send.isVisible = !voice
+        binding.voiceToggle.setImageResource(if (voice) R.drawable.ic_keyboard else R.drawable.ic_mic)
+        binding.voiceToggle.contentDescription = getString(if (voice) R.string.chat_keyboard_input else R.string.chat_voice_input)
+        val ime = getSystemService(InputMethodManager::class.java)
+        if (voice) {
+            ime?.hideSoftInputFromWindow(binding.input.windowToken, 0)
+        } else if (binding.input.hasWindowFocus()) {
+            binding.input.requestFocus()
+            ime?.showSoftInput(binding.input, 0)
+        }
     }
 
     /** 拍照时照片的保存位置（相机应用返回前页面可能被销毁重建，保存在 savedInstanceState 中） */
@@ -414,6 +521,7 @@ class ChatActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         pendingResendRowId?.let { outState.putLong(STATE_RESEND, it) }
         pendingPhoto?.let { outState.putString(STATE_PHOTO, it.path) }
+        outState.putBoolean(STATE_VOICE_MODE, voiceMode)
     }
 
     companion object {
@@ -422,6 +530,13 @@ class ChatActivity : AppCompatActivity() {
         private const val EXTRA_KIND = "kind"
         private const val STATE_RESEND = "pendingResend"
         private const val STATE_PHOTO = "pendingPhoto"
+        private const val STATE_VOICE_MODE = "voiceMode"
+
+        /** 录音文件目录（缓存目录下） */
+        private const val VOICE_DIR = "voice"
+
+        /** 按住说话时手指上滑多远（离开按钮上沿，dp）进入取消区域 */
+        private const val CANCEL_DISTANCE_DP = 50
 
         /** 从相册一次最多选择的图片数 */
         private const val MAX_PICK = 9

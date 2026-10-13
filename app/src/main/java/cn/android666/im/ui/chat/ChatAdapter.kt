@@ -1,6 +1,7 @@
 package cn.android666.im.ui.chat
 
 import android.content.Context
+import android.graphics.drawable.AnimationDrawable
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isVisible
@@ -15,11 +16,13 @@ import cn.android666.im.data.message.ChatMessage
 import cn.android666.im.data.message.MessageState
 import cn.android666.im.data.message.ReplyPreview
 import cn.android666.im.data.message.SendError
+import cn.android666.im.data.message.VoiceRules
 import cn.android666.im.databinding.ItemChatInBinding
 import cn.android666.im.databinding.ItemChatNoticeBinding
 import cn.android666.im.databinding.ItemChatOutBinding
 import cn.android666.im.databinding.ItemChatTimeBinding
 import cn.android666.im.databinding.ViewChatImageBinding
+import cn.android666.im.databinding.ViewChatVoiceBinding
 import cn.android666.im.ui.conversation.ConversationAdapter
 import cn.android666.im.ui.conversation.TimeLabel
 import coil3.dispose
@@ -28,7 +31,7 @@ import java.io.File
 
 /**
  * 聊天页消息列表（开发计划 4.8）：时间分隔、对方的消息、本人的消息、系统提示（撤回）。
- * 图片消息显示缩略图（5.4）；其余非文本消息暂时显示降级文本（如"[语音]"），见 M5 后续功能。
+ * 图片消息显示缩略图（5.4）、语音消息显示语音气泡（5.5）；其余非文本消息暂时显示降级文本（如"[文件] 报告.pdf"），见 M5 后续功能。
  *
  * @property showReadState 是否显示"未读 / 已读"（单聊显示；文件传输助手不显示；群聊的已读人数见 M6）
  * @property now 当前时间（毫秒），计算时间分隔的文字
@@ -37,6 +40,7 @@ import java.io.File
  * @property selfJid 本人 bare JID（引用本人的消息时显示"我"）
  * @property onToggle 多选模式中点击消息（切换选中）
  * @property onOpen 点击消息气泡（合并转发的聊天记录、图片等需要打开的消息）
+ * @property onVoice 点击语音消息（播放 / 停止）
  */
 class ChatAdapter(
     private val showReadState: Boolean,
@@ -46,10 +50,19 @@ class ChatAdapter(
     private val selfJid: String? = null,
     private val onToggle: (ChatMessage) -> Unit = {},
     private val onOpen: (ChatMessage) -> Unit = {},
+    private val onVoice: (ChatMessage) -> Unit = {},
 ) : PagingDataAdapter<ChatListItem, RecyclerView.ViewHolder>(DIFF) {
 
     /** 多选模式中已选中的消息 rowId；不在多选模式时为 null。修改后刷新全部列表项 */
     var selection: Set<Long>? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyItemRangeChanged(0, itemCount)
+        }
+
+    /** 正在播放的语音 rowId（显示播放动画）；修改后刷新全部列表项 */
+    var playingVoice: Long? = null
         set(value) {
             if (field == value) return
             field = value
@@ -153,7 +166,9 @@ class ChatAdapter(
             if (selection == null) onLongClick(message)
             selection == null
         }
-        bindImage(b.imageBox, b.bubble, message)
+        bindImage(b.imageBox, message)
+        bindVoice(b.voiceBox, message, outgoing = false)
+        b.bubble.isVisible = !showsMedia(message)
         bindQuote(b.quote, message)
     }
 
@@ -172,7 +187,9 @@ class ChatAdapter(
             if (selection == null) onLongClick(message)
             selection == null
         }
-        bindImage(b.imageBox, b.bubble, message)
+        bindImage(b.imageBox, message)
+        bindVoice(b.voiceBox, message, outgoing = true)
+        b.bubble.isVisible = !showsMedia(message)
         bindQuote(b.quote, message)
         b.sending.isVisible = message.state == MessageState.SENDING
         b.failed.isVisible = message.state == MessageState.FAILED
@@ -221,17 +238,15 @@ class ChatAdapter(
     }
 
     /**
-     * 图片消息（开发计划 5.4）：隐藏文字气泡，按图片宽高显示缩略图；本人发出、上传中时显示进度，上传失败时提示。
+     * 图片消息（开发计划 5.4）：按图片宽高显示缩略图（文字气泡由调用方隐藏）；本人发出、上传中时显示进度，上传失败时提示。
      * 点击查看大图（多选模式中为切换选中），长按弹出操作菜单。
      *
      * @param box 图片布局
-     * @param bubble 文字气泡
      * @param message 消息
      */
-    private fun bindImage(box: ViewChatImageBinding, bubble: android.view.View, message: ChatMessage) {
+    private fun bindImage(box: ViewChatImageBinding, message: ChatMessage) {
         val image = message.content as? MessageContent.Image
         box.root.isVisible = image != null
-        bubble.isVisible = image == null
         if (image == null) {
             box.image.dispose()
             box.image.setImageDrawable(null)
@@ -263,6 +278,48 @@ class ChatAdapter(
     }
 
     /**
+     * 语音消息（开发计划 5.5）：气泡宽度随时长变化，显示秒数；对方发来的未听语音显示红点；正在播放时显示声波动画。
+     * 本人发出的从右到左排列（声波在右侧、朝左）。点击播放 / 停止（多选模式中为切换选中），长按弹出操作菜单。
+     *
+     * @param box 语音布局
+     * @param message 消息
+     * @param outgoing 是否本人发出
+     */
+    private fun bindVoice(box: ViewChatVoiceBinding, message: ChatMessage, outgoing: Boolean) {
+        val voice = message.content as? MessageContent.Voice
+        box.root.isVisible = voice != null
+        val playing = voice != null && message.rowId == playingVoice
+        val wave = box.wave.drawable as? AnimationDrawable
+        if (!playing) wave?.stop()
+        if (voice == null) return
+        val density = box.root.resources.displayMetrics.density
+        val duration = voice.file.duration ?: 0L
+        box.root.layoutDirection = if (outgoing) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR
+        box.bubble.setBackgroundResource(if (outgoing) R.drawable.bg_bubble_out else R.drawable.bg_bubble_in)
+        box.bubble.updateLayoutParams {
+            width = VoiceRules.bubbleWidth(duration, (VOICE_MIN_DP * density).toInt(), (VOICE_MAX_DP * density).toInt())
+        }
+        box.wave.scaleX = if (outgoing) -1f else 1f
+        box.duration.text = box.root.context.getString(R.string.chat_voice_duration, VoiceRules.seconds(duration))
+        box.unplayed.isVisible = !outgoing && !message.voicePlayed
+        if (playing) {
+            if (wave == null || box.wave.tag != TAG_ANIMATING) {
+                box.wave.setImageResource(R.drawable.anim_voice_playing)
+                box.wave.tag = TAG_ANIMATING
+            }
+            (box.wave.drawable as? AnimationDrawable)?.start()
+        } else if (box.wave.tag != null) {
+            box.wave.setImageResource(R.drawable.ic_voice_wave_3)
+            box.wave.tag = null
+        }
+        box.bubble.setOnClickListener { if (selection == null) onVoice(message) else onToggle(message) }
+        box.bubble.setOnLongClickListener {
+            if (selection == null) onLongClick(message)
+            selection == null
+        }
+    }
+
+    /**
      * 显示引用的原消息。
      *
      * @param view 引用预览
@@ -286,6 +343,24 @@ class ChatAdapter(
 
         /** 系统提示 */
         const val TYPE_NOTICE = 3
+
+        /** 语音气泡的最小宽度（dp，1 秒） */
+        private const val VOICE_MIN_DP = 72
+
+        /** 语音气泡的最大宽度（dp，60 秒） */
+        private const val VOICE_MAX_DP = 200
+
+        /** 声波图标正在显示动画的标记 */
+        private const val TAG_ANIMATING = "animating"
+
+        /**
+         * 是否以媒体样式显示（隐藏文字气泡）。
+         *
+         * @param message 消息
+         * @return 图片、语音为 true
+         */
+        fun showsMedia(message: ChatMessage): Boolean =
+            message.content is MessageContent.Image || message.content is MessageContent.Voice
 
         /** 图片消息的最大边长（dp） */
         private const val IMAGE_MAX_DP = 150

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 聊天页标题栏菜单（开发计划 5.5）：语音听筒播放开关 -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/voiceEarpiece"
+        android:checkable="true"
+        android:title="@string/chat_voice_earpiece"
+        app:showAsAction="never" />
+</menu>

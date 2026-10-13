@@ -52,6 +52,11 @@
             android:id="@+id/imageBox"
             layout="@layout/view_chat_image" />
 
+        <!-- 语音消息（开发计划 5.5）：显示时隐藏文字气泡 -->
+        <include
+            android:id="@+id/voiceBox"
+            layout="@layout/view_chat_voice" />
+
         <!-- 引用的原消息（开发计划 4.15） -->
         <TextView
             android:id="@+id/quote"

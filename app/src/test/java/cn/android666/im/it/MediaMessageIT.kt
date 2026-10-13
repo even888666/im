@@ -54,16 +54,18 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 /**
- * 图片消息端到端测试（开发计划 5.4）：App 的发送流程（ImageCompressor 压缩 → FileUploader 先传缩略图再传原图 →
- * 发送队列发消息）经真实 Openfire 转发；接收方按消息中的地址下载缩略图和主图，尺寸符合协议规范 §7.2。
+ * 媒体消息端到端测试（开发计划 5.4、5.5）：App 的发送流程（MediaSender：处理文件 → FileUploader 上传 → 发送队列发消息）
+ * 经真实 Openfire 转发；接收方按消息中的地址下载附件。
+ * - 图片：先传缩略图再传主图，尺寸符合协议规范 §7.2；
+ * - 语音：时长、类型符合 §7.3，下载内容与录音文件一致。
  *
- * 运行：`bash server/up.sh && ./gradlew testDebugUnitTest -Pim.it=true --tests '*ImageMessageIT*'`
+ * 运行：`bash server/up.sh && ./gradlew testDebugUnitTest -Pim.it=true --tests '*MediaMessageIT*'`
  *
  * 使用测试账号 10005（发送）、10006（接收）。
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class ImageMessageIT {
+class MediaMessageIT {
 
     @get:Rule
     val temp = TemporaryFolder()
@@ -129,15 +131,18 @@ class ImageMessageIT {
         return options.outWidth to options.outHeight
     }
 
-    @Test
-    fun sendImage_receivedAndDownloadable(): Unit = runBlocking {
-        val a = login(5)
-        val b = login(6)
+    /**
+     * App 的媒体消息发送组件（10005 的内存数据库）。
+     *
+     * @param a 发送方客户端
+     * @param cacheDir 媒体缓存目录
+     * @return MediaSender
+     */
+    private suspend fun mediaSender(a: SmackXmppClient, cacheDir: File): MediaSender {
         val max = a.discoverCapabilities().maxUploadFileSize
         val queue = SendQueue(a, holder, scope, SystemTimeClock)
         val repository = MessageRepository(holder, queue, ServerClock(SystemTimeClock), UuidIdGenerator()) { jidA }
-        val cacheDir = temp.newFolder("cache")
-        val sender = MediaSender(
+        return MediaSender(
             client = a,
             databases = holder,
             repository = repository,
@@ -148,6 +153,14 @@ class ImageMessageIT {
             scope = scope,
             io = Dispatchers.IO,
         )
+    }
+
+    @Test
+    fun sendImage_receivedAndDownloadable(): Unit = runBlocking {
+        val a = login(5)
+        val b = login(6)
+        val cacheDir = temp.newFolder("cache")
+        val sender = mediaSender(a, cacheDir)
         val source = temp.newFile("photo.png")
         source.outputStream().use { createBitmap(2400, 1600).apply { eraseColor(Color.GREEN) }.compress(Bitmap.CompressFormat.PNG, 100, it) }
 
@@ -183,6 +196,33 @@ class ImageMessageIT {
             while (holder.require().messageDao().getByRowId(saved.rowId)!!.status != MessageEntity.STATUS_SENT) delay(50)
         }
         assertThat(MediaCache(cacheDir).get(content.file.url, content.file.name)).isNotNull()
+    }
+
+    @Test
+    fun sendVoice_receivedWithDuration(): Unit = runBlocking {
+        val a = login(5)
+        val b = login(6)
+        val sender = mediaSender(a, temp.newFolder("cache"))
+        // 内容不必是真正的 m4a：服务器只负责存取，这里验证上传、转发、下载与报文字段
+        val bytes = ByteArray(4_000) { (it % 97).toByte() }
+        val recorded = temp.newFile("rec.m4a").apply { writeBytes(bytes) }
+
+        val received = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(TIMEOUT) {
+                b.incomingMessages.map { MessageCodec.parse(it) }.first { it.message.content is MessageContent.Voice }
+            }
+        }
+        val saved = sender.sendVoice(jidB, ConversationEntity.TYPE_SINGLE, recorded, 4_200)
+
+        val message = received.await().message
+        assertThat(message.msgId).isEqualTo(saved.msgId)
+        assertThat(message.body).isEqualTo("[语音]")
+        val voice = (message.content as MessageContent.Voice).file
+        assertThat(voice.duration).isEqualTo(4_200)
+        assertThat(voice.mime).isEqualTo("audio/mp4")
+        assertThat(voice.size).isEqualTo(bytes.size.toLong())
+        val downloaded = FileDownloader(http).download(voice.url, File(temp.root, "v.m4a"))
+        assertThat(downloaded.readBytes()).isEqualTo(bytes)
     }
 
     private companion object {
