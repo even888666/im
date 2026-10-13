@@ -10,3 +10,19 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+
+# ============================================================================
+# 本项目的 keep 规则（见 Android工程架构.md §10"混淆"）
+#
+# 已由依赖库自带 consumer 规则覆盖、无需在此重复的：
+# - logback / slf4j：cn.android666:logback-android 的 proguard.txt 整体保留 ch.qos.logback.**、org.slf4j.**
+# - AndroidX Startup：保留所有 Initializer 实现类（含 cn.android666.im.core.log.LogInitializer）
+# - kotlinx.serialization：运行库自带 R8 规则，@Serializable 类的序列化器会被保留
+#
+# Smack、WebRTC 的规则在接入时添加。
+# ============================================================================
+
+# 崩溃日志与 release 版文件日志使用 %class 输出类名（见 assets/logback.xml），
+# 保留源文件名和行号信息，配合 mapping.txt 可还原崩溃堆栈
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

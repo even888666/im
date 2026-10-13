@@ -28,7 +28,8 @@ android {
     buildTypes {
         release {
             optimization {
-                enable = false
+                // 开启 R8 代码压缩与混淆（功能清单 §18"代码混淆"）；keep 规则见 src/main/keepRules/
+                enable = true
             }
         }
     }
