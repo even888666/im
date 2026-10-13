@@ -20,8 +20,10 @@ import kotlinx.coroutines.withContext
 import org.jivesoftware.smack.ConnectionConfiguration.SecurityMode
 import org.jivesoftware.smack.ConnectionListener
 import org.jivesoftware.smack.ReconnectionManager
+import org.jivesoftware.smack.sm.predicates.Predicate
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration
+import org.jivesoftware.smackx.ping.PingManager
 import java.net.InetAddress
 import javax.net.ssl.X509TrustManager
 import kotlin.system.measureTimeMillis
@@ -33,6 +35,8 @@ import kotlin.system.measureTimeMillis
  * - 只启用 SCRAM-SHA-1，禁止 PLAIN 等明文机制（协议规范 §2.1）；
  * - resource 固定为 `android`；启用流管理（XEP-0198）并请求流恢复（协议规范 §2.2 第 1、2 步）；
  * - 关闭 Smack 自带的自动重连，重连策略由 XmppConnectionManager 统一负责（开发计划 2.6）；
+ * - 心跳：60 秒没有收到任何数据时发送 XEP-0199 ping，10 秒内无响应视为连接失效，立即断开并交给重连逻辑；
+ * - 流管理确认：每发送一条消息或每 5 个 stanza 请求一次 `<r/>`（协议规范 §2.3）；
  * - 报文经 [XmppLogDebugger] 脱敏后写入 xmpp 日志。
  *
  * 所有阻塞调用都在 [DispatcherProvider.io] 上执行；login / reconnect / logout 用互斥锁串行化，
@@ -97,6 +101,7 @@ class SmackXmppClient(
                 setUseStreamManagementResumption(true)
                 addConnectionListener(connectionListener)
                 ReconnectionManager.getInstanceFor(this).disableAutomaticReconnection()
+                configureKeepAlive(this)
             }
             try {
                 val cost = measureTimeMillis {
@@ -152,6 +157,23 @@ class SmackXmppClient(
         }
     }
 
+    override suspend fun checkAlive(): Boolean = withContext(dispatchers.io) {
+        val current = connection
+        if (current == null || !current.isAuthenticated) return@withContext false
+        val alive = try {
+            PingManager.getInstanceFor(current).pingMyServer(false, PING_TIMEOUT_MILLIS)
+        } catch (e: Exception) {
+            log.warn("连接检测出错", e)
+            false
+        }
+        if (alive) {
+            log.info("连接检测：可用")
+        } else {
+            onConnectionDead(current, "主动检测无响应")
+        }
+        alive
+    }
+
     override suspend fun logout() = mutex.withLock {
         withContext(dispatchers.io) {
             val current = connection ?: return@withContext
@@ -163,6 +185,38 @@ class SmackXmppClient(
             connection = null
             state.value = ConnectionState.Idle
         }
+    }
+
+    /**
+     * 配置心跳与流管理确认。
+     *
+     * @param target 新创建的连接
+     */
+    private fun configureKeepAlive(target: XMPPTCPConnection) {
+        // IQ 响应超时 10 秒（协议规范 §2.3：ping 10 秒内无响应视为断线），也作为其他请求的默认超时
+        target.replyTimeout = PING_TIMEOUT_MILLIS
+        PingManager.getInstanceFor(target).apply {
+            // Smack 只在该间隔内没有收到任何数据时才发 ping，与协议"60 秒无收发数据时发送"一致
+            pingInterval = PING_INTERVAL_SECONDS
+            registerPingFailedListener { onConnectionDead(target, "心跳无响应") }
+        }
+        // 每发送一条消息或每 5 个 stanza 请求一次确认，消息的"已发送"状态更及时（协议规范 §2.3）
+        target.addRequestAckPredicate(Predicate.forMessagesOrAfter5Stanzas())
+    }
+
+    /**
+     * 连接已失效（心跳或主动检测无响应）：立即断开，状态改为网络原因断开，由 XmppConnectionManager 重连。
+     * 使用 instantShutdown（不发送 `</stream>`），服务器会保留会话，重连时可以流恢复。
+     *
+     * @param target 失效的连接
+     * @param why 原因，写日志用
+     */
+    private fun onConnectionDead(target: XMPPTCPConnection, why: String) {
+        // 回调可能来自旧连接（已被替换），只处理当前连接
+        if (connection !== target) return
+        log.warn("连接失效（{}），断开并等待重连", why)
+        runCatching { target.instantShutdown() }
+        state.value = ConnectionState.Disconnected(DisconnectReason.Network(XmppException.Timeout()))
     }
 
     /**
@@ -217,6 +271,12 @@ class SmackXmppClient(
 
         /** 报文日志的标签 */
         const val STANZA_TAG = "Stanza"
+
+        /** 心跳间隔（秒）：60 秒无收发数据时发送 ping（协议规范 §2.3） */
+        const val PING_INTERVAL_SECONDS = 60
+
+        /** ping 及其他 IQ 的响应超时（毫秒） */
+        const val PING_TIMEOUT_MILLIS = 10_000L
 
         /** 唯一启用的 SASL 机制 */
         const val SASL_MECHANISM = "SCRAM-SHA-1"

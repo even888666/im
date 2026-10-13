@@ -35,6 +35,15 @@ interface XmppClient {
     suspend fun reconnect(): LoginResult
 
     /**
+     * 立即检测连接是否仍然可用（发送 XEP-0199 ping，10 秒内无响应视为失效）。
+     * 用于切换网络后：旧网络上的 TCP 连接通常已经失效，但要等心跳超时才会发现，主动检测能更快重连。
+     * 检测失败时连接会被断开，状态变为 [ConnectionState.Disconnected]（网络原因），由重连逻辑接手。
+     *
+     * @return 连接可用返回 true；未连接或检测失败返回 false
+     */
+    suspend fun checkAlive(): Boolean
+
+    /**
      * 退出登录：正常关闭连接（发送 `</stream>`，服务器立即释放会话），状态变为 [ConnectionState.Idle]。
      * 未连接时什么也不做。
      */

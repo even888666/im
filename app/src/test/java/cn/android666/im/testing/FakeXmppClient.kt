@@ -46,6 +46,16 @@ class FakeXmppClient : XmppClient {
         return complete(reconnectResults.removeFirstOrNull() ?: LoginResult(resumed = true))
     }
 
+    /** 依次用于每次 [checkAlive] 的结果，未预设时返回 true；返回 false 时模拟连接失效并断开 */
+    val aliveResults = ArrayDeque<Boolean>()
+
+    override suspend fun checkAlive(): Boolean {
+        calls += "checkAlive"
+        val alive = aliveResults.removeFirstOrNull() ?: true
+        if (!alive) state.value = ConnectionState.Disconnected(DisconnectReason.Network(null))
+        return alive
+    }
+
     override suspend fun logout() {
         calls += "logout"
         state.value = ConnectionState.Idle

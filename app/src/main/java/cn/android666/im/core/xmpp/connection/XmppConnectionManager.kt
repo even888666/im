@@ -47,6 +47,8 @@ sealed interface ConnectionEvent {
  * - 连接因网络原因断开 → 按 [ReconnectPolicy] 退避重连，优先流恢复（由 [XmppClient.reconnect] 实现）；
  * - 被挤下线、账号被禁用、认证失败 → 不重连，发出 [ConnectionEvent.Stopped]；
  * - 无网络时暂停重连，网络恢复时重置退避并立即重连；
+ * - 已连接时默认网络发生切换（Wi-Fi ↔ 移动网络 ↔ 专网 APN）→ 立即检测连接是否失效（[XmppClient.checkAlive]），
+ *   不必等心跳超时；
  * - [reconnectNow]：回到前台等时机主动触发立即重连。
  *
  * 应用级单例，由 AppContainer 持有，与界面生命周期无关；所有协程运行在 [scope] 中。
@@ -148,9 +150,14 @@ class XmppConnectionManager(
         reconnectSignal.tryReceive()
         supervisorJob = scope.launch { supervise(needInitialLogin) }
         networkJob = scope.launch {
-            // drop(1)：跳过当前值，只关心之后的变化；网络从不可用变为可用时立即重连
+            // drop(1)：跳过当前值，只关心之后的变化
             networkMonitor.status.drop(1).collect { status ->
-                if (status.available) {
+                if (!status.available) return@collect
+                if (state.value is ConnectionState.Authenticated) {
+                    // 已连接时切换了网络：旧网络上的连接可能已失效，主动检测；失效时客户端会断开，监管协程负责重连
+                    log.info("已连接时网络切换为 {}，检测连接是否可用", status.networkId)
+                    client.checkAlive()
+                } else {
                     log.info("网络可用（{}），触发立即重连", status.networkId)
                     reconnectNow()
                 }

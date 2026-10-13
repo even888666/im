@@ -236,16 +236,34 @@ class XmppConnectionManagerTest {
         assertThat(events.last()).isEqualTo(ConnectionEvent.Connected(resumed = false, isReconnect = true))
     }
 
-    /** 已连接时网络变化（例如 Wi-Fi 切到移动网络）不会触发多余的重连 */
+    /** 已连接时切换网络（例如 Wi-Fi 切到移动网络）：只检测连接，连接仍可用时不重连 */
     @Test
-    fun networkChange_whileConnected_noExtraReconnect() = runTest {
+    fun networkChange_whileConnected_checksAliveOnly() = runTest {
         val manager = newManager()
         manager.login(credential)
+        // 让网络监听协程先开始收集，之后的网络变化才会被处理
+        runCurrent()
 
         network.status.value = NetworkStatus(available = true, networkId = "mobile")
         runCurrent()
 
-        assertThat(client.calls).containsExactly("login:10001")
+        assertThat(client.calls).containsExactly("login:10001", "checkAlive").inOrder()
         assertThat(manager.state.value).isEqualTo(ConnectionState.Authenticated(resumed = false))
+    }
+
+    /** 切换网络后检测发现连接已失效：立即重连 */
+    @Test
+    fun networkChange_connectionDead_reconnects() = runTest {
+        val manager = newManager()
+        manager.login(credential)
+        // 让网络监听协程先开始收集，之后的网络变化才会被处理
+        runCurrent()
+        client.aliveResults += false
+
+        network.status.value = NetworkStatus(available = true, networkId = "mobile")
+        runCurrent()
+
+        assertThat(client.calls).containsExactly("login:10001", "checkAlive", "reconnect").inOrder()
+        assertThat(events.last()).isEqualTo(ConnectionEvent.Connected(resumed = true, isReconnect = true))
     }
 }

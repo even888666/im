@@ -81,6 +81,48 @@ class ConnectionManagerIT {
         assertThat(manager.state.value).isEqualTo(ConnectionState.Authenticated(resumed = true))
     }
 
+    /**
+     * 连接僵死（服务器无响应，TCP 未断开）：主动检测在 10 秒内发现并断开，服务器恢复后自动重连且流恢复。
+     * 用 `docker pause` 冻结 Openfire 容器模拟（进程暂停，TCP 连接保持但不再响应）。
+     */
+    @Test
+    fun deadConnection_detectedByCheckAlive_thenReconnects() = runBlocking {
+        val client = newClient()
+        val manager = XmppConnectionManager(client, FakeNetworkMonitor(), scope)
+        manager.login(credential(10))
+        assertThat(client.checkAlive()).isTrue()
+        val reconnected = async(start = CoroutineStart.UNDISPATCHED) {
+            manager.events.first { it is ConnectionEvent.Connected && it.isReconnect }
+        }
+
+        dockerOpenfire("pause")
+        try {
+            val started = System.currentTimeMillis()
+            assertThat(client.checkAlive()).isFalse()
+            // ping 超时为 10 秒
+            assertThat(System.currentTimeMillis() - started).isLessThan(15_000)
+            assertThat(client.connectionState.value).isInstanceOf(ConnectionState.Disconnected::class.java)
+        } finally {
+            dockerOpenfire("unpause")
+        }
+
+        val event = withTimeout(60_000) { reconnected.await() }
+        assertThat(event).isEqualTo(ConnectionEvent.Connected(resumed = true, isReconnect = true))
+    }
+
+    /**
+     * 对本地 Openfire 容器执行 docker 命令。
+     *
+     * @param action `pause` 或 `unpause`
+     */
+    private fun dockerOpenfire(action: String) {
+        val id = ProcessBuilder("docker", "ps", "-q", "--filter", "name=im-server-openfire")
+            .start().inputStream.bufferedReader().readText().trim()
+        check(id.isNotEmpty()) { "未找到 Openfire 容器" }
+        val exit = ProcessBuilder("docker", action, id).inheritIO().start().waitFor()
+        check(exit == 0) { "docker $action 失败" }
+    }
+
     @Test
     fun secondDeviceLogin_stopsWithConflict() = runBlocking {
         val manager = XmppConnectionManager(newClient(), FakeNetworkMonitor(), scope)
