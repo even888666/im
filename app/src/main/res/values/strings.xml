@@ -129,6 +129,7 @@
     <string name="chat_error_sensitive">消息包含敏感内容，发送失败</string>
     <string name="chat_retracted_self">你撤回了一条消息</string>
     <string name="chat_retracted_peer">对方撤回了一条消息</string>
+    <string name="chat_peer_typing">对方正在输入…</string>
     <string name="chat_action_copy">复制</string>
     <string name="chat_action_retract">撤回</string>
     <string name="chat_copied">已复制</string>

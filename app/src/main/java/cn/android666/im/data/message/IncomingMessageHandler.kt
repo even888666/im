@@ -24,10 +24,10 @@ import kotlinx.coroutines.launch
  * 按到达顺序逐条处理。
  *
  * 当前处理：单聊的用户可见消息（去重 → 写库 → 更新会话 / 未读 → 回送达回执）、送达回执与服务器退回（4.5）、
- * Carbons 多端同步与文件传输助手（4.6）、已读标记（4.9）、撤回（4.12）。
+ * Carbons 多端同步与文件传输助手（4.6）、已读标记（4.9）、撤回（4.12）、正在输入（4.14）。
  * MAM 补拉的消息由 MamSyncer 收集后调用 [applyArchived]（4.10）。
  * 其余类型在对应的小功能中接入：
- * 正在输入（4.14）、群聊（M6）。
+ * 群聊（M6）。
  *
  * @property client XMPP 客户端
  * @property repository 消息仓库
@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
  * @property ids ID 生成器（回执报文的 ID、缺少 ID 的消息）
  * @property selfJid 本人 bare JID；未登录时为 null
  * @property scope 应用级协程作用域
+ * @property chatStates 正在输入状态（开发计划 4.14）；为 null 时忽略
  */
 class IncomingMessageHandler(
     private val client: XmppClient,
@@ -47,6 +48,7 @@ class IncomingMessageHandler(
     private val ids: IdGenerator,
     private val selfJid: () -> String?,
     private val scope: CoroutineScope,
+    private val chatStates: ChatStates? = null,
 ) {
 
     private val log = Logs.file(TAG)
@@ -153,6 +155,9 @@ class IncomingMessageHandler(
             msg.displayedId != null -> onDisplayed(msg, msg.displayedId)
             msg.retractId != null -> msg.from?.let { onRetract(msg, msg.retractId, IncomingMessageMapper.bareJid(it), self) }
             msg.content != null && isChatType(msg) -> onChatMessage(msg, self)
+            msg.chatState != null && msg.type == "chat" -> msg.from?.let {
+                chatStates?.onPeerState(IncomingMessageMapper.bareJid(it), msg.chatState)
+            }
             else -> log.debug("暂未处理的消息：type={}，id={}", msg.type, msg.msgId)
         }
     }
@@ -338,6 +343,8 @@ class IncomingMessageHandler(
             archiveId = handling.archiveId,
         )
         val saved = repository.saveIncoming(entity, ConversationEntity.TYPE_SINGLE, handling.countUnread)
+        // 对方发来了消息：不再显示"正在输入"
+        if (handling.archiveId == null) chatStates?.onPeerMessage(sender)
         if (saved != null) {
             log.info("收到消息：msgId={}，来自={}，类型={}，离线={}，补拉={}", saved.msgId, sender, saved.type, msg.delayStamp != null, handling.archiveId != null)
             if (handling.notify) newMessageFlow.tryEmit(saved)

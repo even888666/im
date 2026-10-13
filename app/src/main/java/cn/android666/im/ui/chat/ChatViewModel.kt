@@ -16,6 +16,7 @@ import cn.android666.im.data.conversation.toEntityType
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.data.message.ChatMessage
+import cn.android666.im.data.message.ChatStates
 import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.RetractResult
 import cn.android666.im.data.message.Retractions
@@ -57,6 +58,7 @@ sealed interface ChatEvent {
  * @property retractions 撤回
  * @param org 组织架构（标题显示对方姓名）
  * @param history 从服务器加载更早历史（开发计划 4.11）；null 表示只显示本地消息
+ * @property chatStates 正在输入状态（开发计划 4.14，仅单聊）；null 时不发送也不显示
  */
 class ChatViewModel(
     val conversationId: String,
@@ -67,7 +69,23 @@ class ChatViewModel(
     private val retractions: Retractions,
     org: OrgRepository,
     history: HistoryLoader? = null,
+    private val chatStates: ChatStates? = null,
 ) : ViewModel() {
+
+    /** 对方是否正在输入（单聊，标题栏下方显示"对方正在输入…"） */
+    val peerTyping: StateFlow<Boolean> =
+        (if (kind == ConversationKind.SINGLE && chatStates != null) chatStates.observePeerTyping(conversationId) else flowOf(false))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), false)
+
+    /**
+     * 输入框内容变化：单聊发送正在输入状态（节流），清空时停止。
+     *
+     * @param text 输入框内容
+     */
+    fun onInputChanged(text: String) {
+        val states = chatStates?.takeIf { kind == ConversationKind.SINGLE } ?: return
+        if (text.isEmpty()) states.onStopTyping(conversationId) else states.onTyping(conversationId)
+    }
 
     private val log = Logs.file(TAG)
 
@@ -151,6 +169,7 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 messages.sendText(conversationId, kind.toEntityType(), text)
+                if (kind == ConversationKind.SINGLE) chatStates?.onStopTyping(conversationId)
                 eventChannel.send(ChatEvent.Sent)
             } catch (e: CancellationException) {
                 throw e
@@ -194,6 +213,7 @@ class ChatViewModel(
 
     /** 页面不可见 */
     fun onHidden() {
+        if (kind == ConversationKind.SINGLE) chatStates?.onStopTyping(conversationId)
         if (messages.activeConversationId() == conversationId) messages.setActiveConversation(null)
     }
 

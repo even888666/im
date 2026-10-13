@@ -15,6 +15,7 @@ import cn.android666.im.data.avatar.AvatarRepository
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
 import cn.android666.im.data.conversation.ConversationRepository
+import cn.android666.im.data.message.ChatStates
 import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.ReadMarkers
@@ -214,8 +215,13 @@ class AppContainer(context: Context) {
 
     /** 收到的消息的分发：去重写库、回执、已读 */
     val incomingMessageHandler: IncomingMessageHandler by lazy {
-        IncomingMessageHandler(xmppClient, messageRepository, readMarkers, retractions, serverClock, idGenerator, selfJid, applicationScope)
+        IncomingMessageHandler(
+            xmppClient, messageRepository, readMarkers, retractions, serverClock, idGenerator, selfJid, applicationScope, chatStates,
+        )
     }
+
+    /** 正在输入状态（单聊） */
+    val chatStates: ChatStates by lazy { ChatStates(xmppClient, idGenerator, clock, applicationScope) }
 
     /** 新消息通知（创建时开始订阅新消息） */
     val messageNotifier: MessageNotifier by lazy {

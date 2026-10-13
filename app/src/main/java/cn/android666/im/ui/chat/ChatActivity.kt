@@ -51,6 +51,7 @@ class ChatActivity : AppCompatActivity() {
                     retractions = container.retractions,
                     org = container.orgRepository,
                     history = container.historyLoader,
+                    chatStates = container.chatStates,
                 )
             }
         }
@@ -132,7 +133,13 @@ class ChatActivity : AppCompatActivity() {
             }
         }
 
-        binding.input.doAfterTextChanged { binding.send.isEnabled = !it.isNullOrBlank() }
+        binding.input.doAfterTextChanged {
+            binding.send.isEnabled = !it.isNullOrBlank()
+            viewModel.onInputChanged(it?.toString().orEmpty())
+        }
+        collectWhenStarted(viewModel.peerTyping) { typing ->
+            binding.toolbar.subtitle = if (typing) getString(R.string.chat_peer_typing) else null
+        }
         binding.send.setOnClickListener { viewModel.send(binding.input.text.toString()) }
         collectWhenStarted(viewModel.events) { event ->
             when (event) {

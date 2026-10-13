@@ -60,6 +60,7 @@ class IncomingMessageHandlerTest {
      * @property db 数据库
      * @property readMarkers 已读标记
      * @property retractions 撤回
+     * @property chatStates 正在输入状态
      */
     private class Rig(
         val handler: IncomingMessageHandler,
@@ -67,6 +68,7 @@ class IncomingMessageHandlerTest {
         val db: ImDatabase,
         val readMarkers: ReadMarkers,
         val retractions: Retractions,
+        val chatStates: ChatStates,
     )
 
     /**
@@ -96,9 +98,12 @@ class IncomingMessageHandlerTest {
         val repository = MessageRepository(newHolder, queue, ServerClock(clock), ids, selfJid)
         val readMarkers = ReadMarkers(client, repository, ConversationRepository(newHolder), ids)
         val retractions = Retractions(client, repository, ServerClock(clock), ids, selfJid, selfName = { "张三" })
-        val handler = IncomingMessageHandler(client, repository, readMarkers, retractions, ServerClock(clock), ids, selfJid, backgroundScope)
+        val chatStates = ChatStates(client, ids, clock, backgroundScope)
+        val handler = IncomingMessageHandler(
+            client, repository, readMarkers, retractions, ServerClock(clock), ids, selfJid, backgroundScope, chatStates,
+        )
         runCurrent()
-        return Rig(handler, repository, db, readMarkers, retractions)
+        return Rig(handler, repository, db, readMarkers, retractions, chatStates)
     }
 
     /** 对方发来的文本消息（协议规范 §6.1） */
@@ -743,6 +748,22 @@ class IncomingMessageHandlerTest {
         assertThat(message.body).isEqualTo("原文")
         assertThat(rig.db.conversationDao().get(BOB)!!.lastMsgPreview).isEqualTo("原文")
         assertThat(rejections.await()).isEqualTo("retract-timeout")
+    }
+
+    /** 4.14：对方的正在输入状态（不入库）；对方发来消息后不再显示 */
+    @Test
+    fun chatState_peerTyping() = runTest {
+        val rig = rig()
+        val typing = rig.chatStates.observePeerTyping(BOB)
+
+        client.receive("<message type='chat' id='s1' from='$BOB/pc'><composing xmlns='http://jabber.org/protocol/chatstates'/></message>")
+        runCurrent()
+        assertThat(typing.first()).isTrue()
+        assertThat(rig.db.conversationDao().get(BOB)).isNull()
+
+        client.receive(chat("m1"))
+        runCurrent()
+        assertThat(typing.first()).isFalse()
     }
 
     /** 发出的消息（指定时间） */
