@@ -84,6 +84,11 @@ class FakeXmppClient : XmppClient {
         }
     }
 
+    override suspend fun sendInitialPresence() {
+        calls += "presence"
+        throwPendingError()
+    }
+
     /** 已发送的 IQ 请求 */
     val sentIqs = mutableListOf<IqRequest<*>>()
 

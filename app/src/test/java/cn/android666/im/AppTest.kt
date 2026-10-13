@@ -2,6 +2,7 @@ package cn.android666.im
 
 import androidx.test.core.app.ApplicationProvider
 import cn.android666.im.core.xmpp.ConnectionState
+import cn.android666.im.data.session.SessionState
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.isActive
 import org.junit.Test
@@ -32,5 +33,13 @@ class AppTest {
         assertThat(container.serverConfig.resource).isEqualTo("android")
         assertThat(container.xmppClient.connectionState.value).isEqualTo(ConnectionState.Idle)
         assertThat(container.rootCaTrust.certificates).isNotEmpty()
+    }
+
+    /** 登录编排可以创建，初始为未登录 */
+    @Test
+    fun sessionManager_createdLoggedOut() {
+        val container = ApplicationProvider.getApplicationContext<App>().container
+
+        assertThat(container.sessionManager.state.value).isEqualTo(SessionState.LoggedOut)
     }
 }

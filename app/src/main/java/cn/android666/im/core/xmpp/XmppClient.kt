@@ -59,6 +59,14 @@ interface XmppClient {
     suspend fun discoverCapabilities(): ServerCapabilities
 
     /**
+     * 发送初始在线状态（协议规范 §2.2 第 8 步）。服务器收到后才开始投递离线消息，
+     * 所以必须在获取 Roster 之后、开始收消息之前调用。
+     *
+     * @throws XmppException 未连接
+     */
+    suspend fun sendInitialPresence()
+
+    /**
      * 发送自定义 IQ 并等待结果（协议规范中的所有自定义 IQ，Android工程架构.md §4.2）。
      *
      * @param request 请求

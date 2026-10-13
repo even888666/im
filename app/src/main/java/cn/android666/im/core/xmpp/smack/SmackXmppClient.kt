@@ -25,6 +25,7 @@ import org.jivesoftware.smack.ConnectionConfiguration.SecurityMode
 import org.jivesoftware.smack.ConnectionListener
 import org.jivesoftware.smack.ReconnectionManager
 import org.jivesoftware.smack.packet.IQ
+import org.jivesoftware.smack.packet.Presence
 import org.jivesoftware.smack.sm.predicates.Predicate
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration
@@ -191,6 +192,10 @@ class SmackXmppClient(
             .onFailure { log.warn("发现文件上传服务失败", it) }
             .getOrNull()
         ServerCapabilities(features, maxFileSize)
+    }
+
+    override suspend fun sendInitialPresence() = request("发送初始 presence") { current ->
+        current.sendStanza(current.stanzaFactory.buildPresenceStanza().ofType(Presence.Type.available).build())
     }
 
     override suspend fun <T> sendIq(request: IqRequest<T>): T = request("IQ ${request.namespace}#${request.elementName}") { current ->

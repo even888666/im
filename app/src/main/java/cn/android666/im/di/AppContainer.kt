@@ -3,12 +3,21 @@ package cn.android666.im.di
 import android.content.Context
 import cn.android666.im.BuildConfig
 import cn.android666.im.core.datastore.settingsDataStore
+import cn.android666.im.core.network.AndroidNetworkMonitor
+import cn.android666.im.core.network.NetworkMonitor
 import cn.android666.im.core.security.AesGcmCredentialCipher
 import cn.android666.im.core.security.AndroidKeyStoreKeyProvider
 import cn.android666.im.core.security.RootCaTrust
 import cn.android666.im.data.account.CredentialStore
+import cn.android666.im.data.session.SessionManager
+import cn.android666.im.data.session.steps.AccountStatusStep
+import cn.android666.im.data.session.steps.CapabilitiesStep
+import cn.android666.im.data.session.steps.EnableCarbonsStep
+import cn.android666.im.data.session.steps.InitialPresenceStep
+import cn.android666.im.data.session.steps.ServerTimeStep
 import cn.android666.im.core.xmpp.ServerConfig
 import cn.android666.im.core.xmpp.XmppClient
+import cn.android666.im.core.xmpp.connection.XmppConnectionManager
 import cn.android666.im.core.xmpp.smack.SmackXmppClient
 import org.jivesoftware.smack.android.AndroidSmackInitializer
 import cn.android666.im.core.common.Clock
@@ -83,6 +92,35 @@ class AppContainer(context: Context) {
     /** 登录凭证存储：工号明文、密码用 Android Keystore 中的密钥加密 */
     val credentialStore: CredentialStore by lazy {
         CredentialStore(appContext.settingsDataStore, AesGcmCredentialCipher(AndroidKeyStoreKeyProvider()))
+    }
+
+    /** 网络状态监听 */
+    val networkMonitor: NetworkMonitor by lazy { AndroidNetworkMonitor(appContext) }
+
+    /** 连接管理：断线重连、心跳检测 */
+    val connectionManager: XmppConnectionManager by lazy {
+        XmppConnectionManager(xmppClient, networkMonitor, applicationScope)
+    }
+
+    /**
+     * 登录编排：登录流程的唯一入口。登录后步骤按协议规范 §2.2 的顺序注册，
+     * 后续模块（Roster、组织架构同步、群列表、MAM 补拉等）在对应位置加入。
+     */
+    val sessionManager: SessionManager by lazy {
+        SessionManager(
+            client = xmppClient,
+            connectionManager = connectionManager,
+            credentialStore = credentialStore,
+            onUserLoggedIn = logFilePrefixManager::onLogin,
+            steps = listOf(
+                EnableCarbonsStep(xmppClient),
+                ServerTimeStep(xmppClient, serverClock),
+                CapabilitiesStep(xmppClient),
+                AccountStatusStep(xmppClient),
+                InitialPresenceStep(xmppClient),
+            ),
+            scope = applicationScope,
+        )
     }
 
     /** 日志文件名前缀管理：登录成功后切换为工号 */
