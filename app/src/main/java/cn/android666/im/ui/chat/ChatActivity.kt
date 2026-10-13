@@ -11,6 +11,7 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.paging.LoadState
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import cn.android666.im.R
@@ -45,6 +46,7 @@ class ChatActivity : AppCompatActivity() {
                     conversations = container.conversationRepository,
                     readMarkers = container.readMarkers,
                     org = container.orgRepository,
+                    history = container.historyLoader,
                 )
             }
         }
@@ -98,6 +100,17 @@ class ChatActivity : AppCompatActivity() {
             }
         })
         lifecycleScope.launch { viewModel.items.collect(adapter::submitData) }
+        // 从服务器加载更早的历史失败（如断网）后，再次滑到顶部时重试
+        var appendError = false
+        adapter.addLoadStateListener { states -> appendError = states.mediator?.append is LoadState.Error }
+        binding.list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_IDLE && appendError && !recyclerView.canScrollVertically(-1)) {
+                    log.info("重试加载更早的历史")
+                    adapter.retry()
+                }
+            }
+        })
 
         supportFragmentManager.setFragmentResultListener(REQUEST_RESEND, this) { _, result ->
             val rowId = pendingResendRowId

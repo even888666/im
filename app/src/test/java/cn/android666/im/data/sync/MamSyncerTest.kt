@@ -61,8 +61,9 @@ class MamSyncerTest {
      *
      * @property syncer 被测对象
      * @property db 数据库
+     * @property history 历史加载
      */
-    private class Rig(val syncer: MamSyncer, val db: ImDatabase)
+    private class Rig(val syncer: MamSyncer, val db: ImDatabase, val history: HistoryLoader)
 
     /**
      * 创建测试环境。服务器时间 = 虚拟时间 + [NOW]。
@@ -93,7 +94,11 @@ class MamSyncerTest {
         val readMarkers = ReadMarkers(client, messages, ConversationRepository(newHolder), ids)
         val handler = IncomingMessageHandler(client, messages, readMarkers, ServerClock(clock), ids, selfJid, backgroundScope)
         runCurrent()
-        return Rig(MamSyncer(MamPager(client), handler, newHolder, ServerClock(clock), ids, pageSize, maxPages), db)
+        return Rig(
+            MamSyncer(MamPager(client), handler, newHolder, ServerClock(clock), ids, pageSize, maxPages),
+            db,
+            HistoryLoader(MamPager(client), handler, newHolder, ids, pageSize),
+        )
     }
 
     /** 对方发来的消息 */
@@ -265,6 +270,46 @@ class MamSyncerTest {
         rig.syncer.syncSelf()
 
         assertThat(archive.queries.map { it.after }).containsExactly("a0", "a3").inOrder()
+    }
+
+    /** 4.11 历史：本地没有消息时取最新一页，之后从本地最早一条的存档 ID 往前翻，直到最早；只取与该会话的消息，不计未读 */
+    @Test
+    fun history_pagesBackward() = runTest {
+        val rig = rig(pageSize = 2)
+        repeat(5) { archive.add(NOW + it, fromBob("b$it")) }
+        archive.add(NOW + 10, "<message xmlns='jabber:client' type='chat' id='other' from='10003@im.example.com/pc' to='$SELF'><body>x</body></message>")
+
+        assertThat(rig.history.loadOlder(BOB)).isFalse()
+        assertThat(archive.queries.last().before).isEqualTo("")
+        assertThat(archive.queries.last().with).isEqualTo(BOB)
+        assertThat(rig.db.messageDao().get(BOB, "b4")).isNotNull()
+        assertThat(rig.db.messageDao().get(BOB, "b3")).isNotNull()
+
+        assertThat(rig.history.loadOlder(BOB)).isFalse()
+        assertThat(archive.queries.last().before).isEqualTo("a4")
+        assertThat(rig.history.loadOlder(BOB)).isTrue()
+        assertThat(rig.db.messageDao().get(BOB, "b0")).isNotNull()
+        assertThat(rig.db.messageDao().get("10003@im.example.com", "other")).isNull()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(0)
+        assertThat(client.sentMessages).isEmpty()
+    }
+
+    /** 本地最早一条没有存档 ID：用结束时间过滤 */
+    @Test
+    fun history_earliestWithoutArchiveId_usesEndTime() = runTest {
+        val rig = rig()
+        rig.db.messageDao().insert(
+            MessageEntity(
+                msgId = "local", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "text",
+                body = "x", status = MessageEntity.STATUS_RECEIVED, serverTime = NOW,
+            ),
+        )
+        archive.add(NOW - 1000, fromBob("older"))
+
+        assertThat(rig.history.loadOlder(BOB)).isTrue()
+        assertThat(archive.queries.last().end).isEqualTo(NOW)
+        assertThat(archive.queries.last().before).isEqualTo("")
+        assertThat(rig.db.messageDao().get(BOB, "older")).isNotNull()
     }
 
     /** 登录步骤：服务器不支持 MAM 时跳过 */

@@ -19,6 +19,7 @@ import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
+import cn.android666.im.data.sync.HistoryLoader
 import cn.android666.im.data.sync.MamPager
 import cn.android666.im.data.sync.MamSyncStep
 import cn.android666.im.data.sync.MamSyncer
@@ -194,6 +195,11 @@ class AppContainer(context: Context) {
     /** 消息补拉（MAM） */
     val mamSyncer: MamSyncer by lazy {
         MamSyncer(MamPager(xmppClient), incomingMessageHandler, userDatabaseHolder, serverClock, idGenerator)
+    }
+
+    /** 聊天页向服务器加载更早的历史 */
+    val historyLoader: HistoryLoader by lazy {
+        HistoryLoader(MamPager(xmppClient), incomingMessageHandler, userDatabaseHolder, idGenerator)
     }
 
     /** 单聊已读标记 */

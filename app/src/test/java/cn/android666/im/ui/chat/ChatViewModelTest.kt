@@ -16,10 +16,14 @@ import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.MessageRepository
+import cn.android666.im.data.sync.MamPager
+import cn.android666.im.data.sync.HistoryLoader
+import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MessageState
 import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
+import cn.android666.im.testing.FakeArchive
 import cn.android666.im.testing.FakeClock
 import cn.android666.im.testing.FakeXmppClient
 import cn.android666.im.testing.MainDispatcherRule
@@ -192,6 +196,41 @@ class ChatViewModelTest {
         runCurrent()
 
         assertThat(db.messageDao().getByRowId(row)!!.status).isEqualTo(MessageEntity.STATUS_SENDING)
+    }
+
+    /** 4.11：本地没有消息时，向上滑动从服务器分页加载全部历史；时间分隔照常插入 */
+    @Test
+    fun items_loadHistoryFromServer() = runTest(mainDispatcherRule.testDispatcher) {
+        val archive = FakeArchive(client)
+        client.iqResponder = archive.responder()
+        repeat(120) {
+            archive.add(
+                10_000_000L + it * 60_000L,
+                "<message xmlns='jabber:client' type='chat' id='h$it' from='$BOB/pc' to='10001@im.example.com'><body>历史 $it</body></message>",
+            )
+        }
+        val clock = FakeClock(startMillis = 20_000_000)
+        val queue = SendQueue(client, holder, backgroundScope, clock)
+        val selfJid = { "10001@im.example.com" }
+        val messages = MessageRepository(holder, queue, ServerClock(clock), UuidIdGenerator(), selfJid)
+        val conversations = ConversationRepository(holder)
+        val readMarkers = ReadMarkers(client, messages, conversations, UuidIdGenerator())
+        val handler = IncomingMessageHandler(client, messages, readMarkers, ServerClock(clock), UuidIdGenerator(), selfJid, backgroundScope)
+        val history = HistoryLoader(MamPager(client), handler, holder, UuidIdGenerator())
+        val vm = ChatViewModel(BOB, ConversationKind.SINGLE, messages, conversations, readMarkers, OrgRepository(client, holder, clock), history)
+
+        val items = vm.items.asSnapshot { appendScrollWhile { true } }
+
+        // 全部历史都写入了本地库（每页 50 条，3 次查询）
+        assertThat(db.messageDao().countIncomingAfter(BOB, -1)).isEqualTo(120)
+        assertThat(archive.queries.size).isAtLeast(3)
+        // 快照是滚动窗口：每次写库后分页按滚动位置（较早的一端）重新加载，较新的一端在往回滚动时再加载；
+        // 这里检查窗口按时间倒序连续，并且已到达最早一条（其上方有时间分隔）
+        val loaded = items.filterIsInstance<ChatListItem.Message>().map { it.message.msgId.removePrefix("h").toInt() }
+        assertThat(loaded.last()).isEqualTo(0)
+        assertThat(loaded).isInStrictOrder(Comparator.reverseOrder<Int>())
+        assertThat(loaded.zipWithNext { a, b -> a - b }.all { it == 1 }).isTrue()
+        assertThat(items.last()).isInstanceOf(ChatListItem.TimeHeader::class.java)
     }
 
     private companion object {

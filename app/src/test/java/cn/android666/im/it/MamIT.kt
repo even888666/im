@@ -125,4 +125,26 @@ class MamIT {
         assertThat(received.filter { it in ids }).containsExactlyElementsIn(ids).inOrder()
         assertThat(pages).isAtLeast(3)
     }
+
+    /** 历史分页（开发计划 4.11）：with 过滤 + `<before/>` 取最新一页，再用本页第一条的存档 ID 往前翻 */
+    @Test
+    fun history_beforePaging(): Unit = runBlocking {
+        val a = login(3)
+        val b = login(4)
+        val jidA = "${ItServer.user(3)}@${ItServer.domain}"
+        val jidB = "${ItServer.user(4)}@${ItServer.domain}"
+        val ids = (1..4).map { UUID.randomUUID().toString() }
+        ids.forEach { a.sendMessage(MessageCodec.chat(jidB, it, "历史", MessageContent.Text), 15_000) }
+        delay(3_000)
+
+        val pager = cn.android666.im.data.sync.MamPager(b)
+        val latest = pager.query(MamQueryRequest(queryId = UUID.randomUUID().toString(), with = jidA, before = "", max = 2))
+        assertThat(latest.items.map { it.message.msgId }).containsExactly(ids[2], ids[3]).inOrder()
+        assertThat(latest.items.all { it.message.from!!.startsWith(jidA) }).isTrue()
+
+        val older = pager.query(
+            MamQueryRequest(queryId = UUID.randomUUID().toString(), with = jidA, before = latest.fin.rsm!!.first, max = 2),
+        )
+        assertThat(older.items.map { it.message.msgId }).containsExactly(ids[0], ids[1]).inOrder()
+    }
 }

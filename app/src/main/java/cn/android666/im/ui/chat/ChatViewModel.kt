@@ -3,6 +3,7 @@ package cn.android666.im.ui.chat
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.ExperimentalPagingApi
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.insertSeparators
@@ -15,6 +16,7 @@ import cn.android666.im.data.conversation.toEntityType
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.org.OrgRepository
+import cn.android666.im.data.sync.HistoryLoader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +50,7 @@ sealed interface ChatEvent {
  * @property conversations 会话仓库（清除未读）
  * @property readMarkers 已读标记（单聊打开时发送）
  * @param org 组织架构（标题显示对方姓名）
+ * @param history 从服务器加载更早历史（开发计划 4.11）；null 表示只显示本地消息
  */
 class ChatViewModel(
     val conversationId: String,
@@ -56,12 +59,14 @@ class ChatViewModel(
     private val conversations: ConversationRepository,
     private val readMarkers: ReadMarkers,
     org: OrgRepository,
+    history: HistoryLoader? = null,
 ) : ViewModel() {
 
     private val log = Logs.file(TAG)
 
-    /** 分页消息，相邻消息间隔超过 5 分钟时插入时间分隔 */
-    val items: Flow<PagingData<ChatListItem>> = messages.pagedMessages(conversationId)
+    /** 分页消息，相邻消息间隔超过 5 分钟时插入时间分隔；本地翻到底后从服务器加载更早的历史 */
+    @OptIn(ExperimentalPagingApi::class)
+    val items: Flow<PagingData<ChatListItem>> = messages.pagedMessages(conversationId, history?.mediator(conversationId))
         .map { page ->
             page.map<_, ChatListItem> { ChatListItem.Message(it) }
                 .insertSeparators { newer, older ->

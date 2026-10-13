@@ -194,6 +194,15 @@ interface MessageDao {
     suspend fun last(conversationId: String): MessageEntity?
 
     /**
+     * 会话中最早的一条消息（聊天页向服务器加载更早的历史时作为起点）。
+     *
+     * @param conversationId 会话 ID
+     * @return 消息；没有时为 null
+     */
+    @Query("SELECT * FROM message WHERE conversationId = :conversationId ORDER BY serverTime ASC, rowId ASC LIMIT 1")
+    suspend fun earliest(conversationId: String): MessageEntity?
+
+    /**
      * 对方发来的最新一条消息（发送已读标记，协议规范 §8.2）。
      *
      * @param conversationId 会话 ID

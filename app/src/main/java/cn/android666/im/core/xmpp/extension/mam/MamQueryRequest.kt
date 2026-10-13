@@ -26,6 +26,7 @@ data class MamFin(val complete: Boolean, val rsm: RsmResult?)
  * @property after 向后翻页：上次最后一条的存档 ID
  * @property before 向前翻页：当前最早一条的存档 ID；空字符串表示从最新一页开始
  * @property start 时间过滤：起始时间（毫秒），含
+ * @property end 时间过滤：结束时间（毫秒），含
  * @property with 只查询与某人的消息（bare JID）
  */
 class MamQueryRequest(
@@ -35,6 +36,7 @@ class MamQueryRequest(
     val after: String? = null,
     val before: String? = null,
     val start: Long? = null,
+    val end: Long? = null,
     val with: String? = null,
 ) : IqRequest<MamFin>(IqType.SET, "query", MessageCodec.NS_MAM, to = archive) {
 
@@ -49,11 +51,12 @@ class MamQueryRequest(
      * @return 内部 XML
      */
     override fun childrenXml(): String = buildString {
-        if (start != null || with != null) {
+        if (start != null || end != null || with != null) {
             append("<x xmlns='jabber:x:data' type='submit'>")
             append("<field var='FORM_TYPE' type='hidden'><value>").append(MessageCodec.NS_MAM).append("</value></field>")
             with?.let { append("<field var='with'><value>").append(Xml.escape(it)).append("</value></field>") }
             start?.let { append("<field var='start'><value>").append(MessageCodec.formatTime(it)).append("</value></field>") }
+            end?.let { append("<field var='end'><value>").append(MessageCodec.formatTime(it)).append("</value></field>") }
             append("</x>")
         }
         append(Rsm.requestXml(max, after, before))

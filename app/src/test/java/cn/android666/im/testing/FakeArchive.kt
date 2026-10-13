@@ -4,6 +4,7 @@ import cn.android666.im.core.xmpp.XmppException
 import cn.android666.im.core.xmpp.extension.mam.MamQueryRequest
 import cn.android666.im.core.xmpp.extension.msg.MessageCodec
 import cn.android666.im.core.xmpp.iq.IqRequest
+import cn.android666.im.core.xmpp.iq.XmlNode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -76,10 +77,24 @@ class FakeArchive(private val client: FakeXmppClient) {
         if (request.after != null && request.after == invalidCursor) {
             throw XmppException.StanzaError("item-not-found", null)
         }
-        val filtered = items.filter { request.start == null || it.stamp >= request.start }
-        val fromIndex = request.after?.let { after -> filtered.indexOfFirst { it.id == after } + 1 } ?: 0
-        val page = filtered.drop(fromIndex).take(request.max)
-        val complete = !neverComplete && fromIndex + page.size >= filtered.size
+        val filtered = items.filter { item ->
+            (request.start == null || item.stamp >= request.start) &&
+                (request.end == null || item.stamp <= request.end) &&
+                (request.with == null || request.with in peersOf(item))
+        }
+        val page: List<Item>
+        val complete: Boolean
+        if (request.before != null) {
+            // 向前翻页：before 之前（空字符串为全部）的最后 max 条；到达最早一条时 complete
+            val endIndex = if (request.before.isEmpty()) filtered.size else filtered.indexOfFirst { it.id == request.before }.coerceAtLeast(0)
+            val fromIndex = (endIndex - request.max).coerceAtLeast(0)
+            page = filtered.subList(fromIndex, endIndex)
+            complete = !neverComplete && fromIndex == 0
+        } else {
+            val fromIndex = request.after?.let { after -> filtered.indexOfFirst { it.id == after } + 1 } ?: 0
+            page = filtered.drop(fromIndex).take(request.max)
+            complete = !neverComplete && fromIndex + page.size >= filtered.size
+        }
         val late = lateLastIn
         page.forEachIndexed { index, item ->
             val xml = resultXml(request.queryId, item)
@@ -98,6 +113,17 @@ class FakeArchive(private val client: FakeXmppClient) {
             "<set xmlns='http://jabber.org/protocol/rsm'><first>${page.first().id}</first><last>${page.last().id}</last></set>"
         }
         return "<fin xmlns='urn:xmpp:mam:2' complete='$complete'>$set</fin>"
+    }
+
+    /**
+     * 存档消息的双方（from、to 的 bare JID），用于 with 过滤。
+     *
+     * @param item 存档条目
+     * @return 双方 bare JID
+     */
+    private fun peersOf(item: Item): Set<String> {
+        val node = XmlNode.parse(item.messageXml)
+        return setOfNotNull(node.attr("from"), node.attr("to")).map { it.substringBefore('/') }.toSet()
     }
 
     /**

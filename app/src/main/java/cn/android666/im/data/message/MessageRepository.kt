@@ -1,8 +1,10 @@
 package cn.android666.im.data.message
 
+import androidx.paging.ExperimentalPagingApi
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
+import androidx.paging.RemoteMediator
 import androidx.paging.map
 import androidx.room.withTransaction
 import cn.android666.im.core.common.IdGenerator
@@ -11,6 +13,7 @@ import cn.android666.im.core.database.ImDatabase
 import cn.android666.im.core.database.UserDatabaseHolder
 import cn.android666.im.core.database.entity.ConversationEntity
 import cn.android666.im.core.database.entity.MessageEntity
+import cn.android666.im.core.database.entity.MessageWithSender
 import cn.android666.im.core.log.Logs
 import cn.android666.im.core.xmpp.extension.msg.Mention
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
@@ -66,14 +69,20 @@ class MessageRepository(
      * 聊天页的分页消息（开发计划 4.8）：新的在前，数据库变化时自动刷新。未登录时为空。
      *
      * @param conversationId 会话 ID
+     * @param remote 本地消息翻到底后从服务器加载更早历史的加载器（开发计划 4.11）；null 表示只显示本地消息
      * @return 分页数据
      */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun pagedMessages(conversationId: String): Flow<PagingData<ChatMessage>> = databases.database.flatMapLatest { db ->
+    @OptIn(ExperimentalCoroutinesApi::class, ExperimentalPagingApi::class)
+    fun pagedMessages(
+        conversationId: String,
+        remote: RemoteMediator<Int, MessageWithSender>? = null,
+    ): Flow<PagingData<ChatMessage>> = databases.database.flatMapLatest { db ->
         if (db == null) {
             flowOf(PagingData.empty())
         } else {
-            Pager(PagingConfig(pageSize = PAGE_SIZE, enablePlaceholders = false)) { db.messageDao().pagingSource(conversationId) }
+            Pager(PagingConfig(pageSize = PAGE_SIZE, enablePlaceholders = false), remoteMediator = remote) {
+                db.messageDao().pagingSource(conversationId)
+            }
                 .flow
                 .map { page -> page.map { it.toChatMessage() } }
         }
