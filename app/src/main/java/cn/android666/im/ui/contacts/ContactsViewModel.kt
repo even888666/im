@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import cn.android666.im.R
 import cn.android666.im.core.log.Logs
 import cn.android666.im.core.xmpp.XmppException
+import cn.android666.im.data.contact.Contact
+import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.org.Employee
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.ui.common.ErrorMessages
@@ -23,11 +25,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * 通讯录首页（开发计划 3.16）：搜索同事、下拉刷新组织架构；常用联系人（3.19）、我的群组（M6）完成后加入。
+ * 通讯录首页（开发计划 3.16、3.19）：搜索同事、常用联系人、下拉刷新组织架构；我的群组在 M6 加入。
  *
  * @property org 组织架构
+ * @param contactRepository 常用联系人
  */
-class ContactsViewModel(private val org: OrgRepository) : ViewModel() {
+class ContactsViewModel(private val org: OrgRepository, contactRepository: ContactRepository) : ViewModel() {
 
     private val log = Logs.file(TAG)
 
@@ -42,6 +45,10 @@ class ContactsViewModel(private val org: OrgRepository) : ViewModel() {
         .debounce(SEARCH_DEBOUNCE_MILLIS)
         .mapLatest { keyword -> if (keyword.isBlank()) null else org.search(keyword) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
+
+    /** 常用联系人（按拼音排序） */
+    val contacts: StateFlow<List<Contact>> = contactRepository.observeContacts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
 
     /** 是否正在同步组织架构（下拉刷新的进度圈） */
     val refreshing: StateFlow<Boolean> = org.syncing

@@ -6,10 +6,14 @@ import cn.android666.im.core.xmpp.DisconnectReason
 import cn.android666.im.core.xmpp.LoginResult
 import cn.android666.im.core.xmpp.ServerCapabilities
 import cn.android666.im.core.xmpp.ServerTime
+import cn.android666.im.core.xmpp.RosterItem
+import cn.android666.im.core.xmpp.RosterSubscription
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
 import cn.android666.im.core.xmpp.iq.IqRequest
 import cn.android666.im.core.xmpp.iq.XmlNode
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -112,6 +116,46 @@ class FakeXmppClient : XmppClient {
         sentIqs += request
         val xml = iqResponder(request)
         return request.parseResult(xml?.let { XmlNode.parse(it) })
+    }
+
+    /** 假的花名册（工号 JID → 条目） */
+    val roster = linkedMapOf<String, RosterItem>()
+
+    private val rosterPushFlow = MutableSharedFlow<RosterItem>(extraBufferCapacity = 64)
+
+    override val rosterPushes: Flow<RosterItem> = rosterPushFlow
+
+    override suspend fun loadRoster(): List<RosterItem> {
+        calls += "roster:load"
+        nextRequestError?.let { nextRequestError = null; throw it }
+        return roster.values.toList()
+    }
+
+    /** 添加联系人：模拟服务器自动同意，花名册中为 TO 并推送 */
+    override suspend fun addRosterItem(jid: String) {
+        calls += "roster:add:$jid"
+        nextRequestError?.let { nextRequestError = null; throw it }
+        val item = RosterItem(jid, RosterSubscription.TO)
+        roster[jid] = item
+        rosterPushFlow.emit(item)
+    }
+
+    /** 移除联系人：从花名册删除并推送 REMOVE */
+    override suspend fun removeRosterItem(jid: String) {
+        calls += "roster:remove:$jid"
+        nextRequestError?.let { nextRequestError = null; throw it }
+        roster.remove(jid)
+        rosterPushFlow.emit(RosterItem(jid, RosterSubscription.REMOVE))
+    }
+
+    /**
+     * 模拟服务器推送花名册变化（例如本人在 PC 端添加了联系人）。
+     *
+     * @param item 条目
+     */
+    suspend fun pushRoster(item: RosterItem) {
+        if (item.subscription == RosterSubscription.REMOVE) roster.remove(item.jid) else roster[item.jid] = item
+        rosterPushFlow.emit(item)
     }
 
     /** 依次用于每次 [checkAlive] 的结果，未预设时返回 true；返回 false 时模拟连接失效并断开 */

@@ -10,6 +10,8 @@ import cn.android666.im.core.security.AesGcmCredentialCipher
 import cn.android666.im.core.security.AndroidKeyStoreKeyProvider
 import cn.android666.im.core.security.RootCaTrust
 import cn.android666.im.data.account.CredentialStore
+import cn.android666.im.data.contact.ContactRepository
+import cn.android666.im.data.contact.RosterStep
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.data.org.OrgSyncStep
 import cn.android666.im.data.settings.AppSettingsStore
@@ -130,6 +132,7 @@ class AppContainer(context: Context) {
                 ServerTimeStep(xmppClient, serverClock),
                 CapabilitiesStep(xmppClient),
                 AccountStatusStep(xmppClient),
+                RosterStep(contactRepository),
                 InitialPresenceStep(xmppClient),
                 OrgSyncStep(orgRepository),
             ),
@@ -140,6 +143,9 @@ class AppContainer(context: Context) {
 
     /** 当前账号的用户数据库（按工号分库，登录时打开、退出登录时关闭） */
     val userDatabaseHolder: UserDatabaseHolder by lazy { UserDatabaseHolder(UserDatabaseHolder.create(appContext)) }
+
+    /** 常用联系人（花名册） */
+    val contactRepository: ContactRepository by lazy { ContactRepository(xmppClient, userDatabaseHolder, applicationScope) }
 
     /** 组织架构：同步、本地查询与搜索 */
     val orgRepository: OrgRepository by lazy { OrgRepository(xmppClient, userDatabaseHolder, clock) }

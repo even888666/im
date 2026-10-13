@@ -8,6 +8,8 @@ import cn.android666.im.core.xmpp.ConnectionState
 import cn.android666.im.core.xmpp.Credential
 import cn.android666.im.core.xmpp.DisconnectReason
 import cn.android666.im.core.xmpp.LoginResult
+import cn.android666.im.core.xmpp.RosterItem
+import cn.android666.im.core.xmpp.RosterSubscription
 import cn.android666.im.core.xmpp.ServerCapabilities
 import cn.android666.im.core.xmpp.ServerConfig
 import cn.android666.im.core.xmpp.ServerTime
@@ -15,7 +17,10 @@ import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
 import cn.android666.im.core.xmpp.iq.IqRequest
 import cn.android666.im.core.xmpp.iq.XmlNode
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -26,6 +31,10 @@ import org.jivesoftware.smack.ConnectionListener
 import org.jivesoftware.smack.ReconnectionManager
 import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smack.packet.Presence
+import org.jivesoftware.smack.roster.Roster
+import org.jivesoftware.smack.roster.RosterEntry
+import org.jivesoftware.smack.roster.RosterListener
+import org.jivesoftware.smack.roster.packet.RosterPacket
 import org.jivesoftware.smack.sm.predicates.Predicate
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration
@@ -35,6 +44,7 @@ import org.jivesoftware.smackx.disco.ServiceDiscoveryManager
 import org.jivesoftware.smackx.httpfileupload.HttpFileUploadManager
 import org.jivesoftware.smackx.ping.PingManager
 import org.jivesoftware.smackx.time.EntityTimeManager
+import org.jxmpp.jid.Jid
 import org.jxmpp.jid.impl.JidCreate
 import java.net.InetAddress
 import javax.net.ssl.X509TrustManager
@@ -89,6 +99,28 @@ class SmackXmppClient(
     private var connection: XMPPTCPConnection? = null
 
     /** 监听连接被动断开，更新状态 */
+    /** 花名册推送（跨越重连持续有效） */
+    private val rosterPushFlow = MutableSharedFlow<RosterItem>(extraBufferCapacity = ROSTER_PUSH_BUFFER)
+
+    override val rosterPushes: Flow<RosterItem> = rosterPushFlow.asSharedFlow()
+
+    /**
+     * Smack 花名册的变化回调（在 Smack 的线程中调用）。登录时加载花名册也会回调 entriesAdded，转发后由业务层幂等处理。
+     */
+    private val rosterListener = object : RosterListener {
+        override fun entriesAdded(addresses: Collection<Jid>) = emitRosterEntries(addresses)
+
+        override fun entriesUpdated(addresses: Collection<Jid>) = emitRosterEntries(addresses)
+
+        override fun entriesDeleted(addresses: Collection<Jid>) {
+            addresses.forEach { emitRosterPush(RosterItem(it.asBareJid().toString(), RosterSubscription.REMOVE)) }
+        }
+
+        override fun presenceChanged(presence: Presence) {
+            // 在线状态按需查询（协议规范 §5.3），不处理订阅推送的 presence
+        }
+    }
+
     private val connectionListener = object : ConnectionListener {
         override fun connectionClosedOnError(e: Exception) {
             val reason = SmackErrors.toDisconnectReason(e)
@@ -119,6 +151,7 @@ class SmackXmppClient(
                 addConnectionListener(connectionListener)
                 ReconnectionManager.getInstanceFor(this).disableAutomaticReconnection()
                 configureKeepAlive(this)
+                configureRoster(this)
             }
             try {
                 val cost = measureTimeMillis {
@@ -262,6 +295,61 @@ class SmackXmppClient(
         }
     }
 
+    override suspend fun loadRoster(): List<RosterItem> = request("获取花名册") { current ->
+        val roster = Roster.getInstanceFor(current)
+        if (!roster.isLoaded) roster.reloadAndWait()
+        roster.entries.map { it.toRosterItem() }.also { log.info("花名册共 {} 条", it.size) }
+    }
+
+    override suspend fun addRosterItem(jid: String) = request("添加常用联系人") { current ->
+        // 名称留空：显示名一律取组织架构姓名（协议规范 §5.1）
+        Roster.getInstanceFor(current).createItemAndRequestSubscription(JidCreate.entityBareFrom(jid), null, null)
+        log.info("已添加常用联系人：{}", jid)
+    }
+
+    override suspend fun removeRosterItem(jid: String) = request("移除常用联系人") { current ->
+        val roster = Roster.getInstanceFor(current)
+        val entry = roster.getEntry(JidCreate.entityBareFrom(jid))
+        if (entry != null) {
+            roster.removeEntry(entry)
+            log.info("已移除常用联系人：{}", jid)
+        }
+    }
+
+    /**
+     * 配置花名册：订阅请求一律不自动处理（manual）。服务器会自动同意本域用户的订阅（协议规范 §5.1），
+     * 如果客户端按 Smack 默认的 reject_all 回复 unsubscribed，会把服务器刚同意的订阅取消掉。
+     *
+     * @param target 连接
+     */
+    private fun configureRoster(target: XMPPTCPConnection) {
+        Roster.getInstanceFor(target).apply {
+            subscriptionMode = Roster.SubscriptionMode.manual
+            addRosterListener(rosterListener)
+        }
+    }
+
+    /**
+     * 把花名册中指定 JID 的当前状态转发为推送。
+     *
+     * @param addresses 变化的 JID
+     */
+    private fun emitRosterEntries(addresses: Collection<Jid>) {
+        val roster = connection?.let { Roster.getInstanceFor(it) } ?: return
+        addresses.forEach { address ->
+            roster.getEntry(address.asBareJid())?.let { emitRosterPush(it.toRosterItem()) }
+        }
+    }
+
+    /**
+     * 发出一条花名册推送；缓冲区满时丢弃并记录（推送只用于实时更新，下次登录会重新获取完整花名册）。
+     *
+     * @param item 条目
+     */
+    private fun emitRosterPush(item: RosterItem) {
+        if (!rosterPushFlow.tryEmit(item)) log.warn("花名册推送缓冲区已满，丢弃：{}", item)
+    }
+
     override suspend fun checkAlive(): Boolean = withContext(dispatchers.io) {
         val current = connection
         if (current == null || !current.isAuthenticated) return@withContext false
@@ -384,6 +472,22 @@ class SmackXmppClient(
      *
      * @return 断开原因
      */
+    /**
+     * Smack 花名册条目转为与 Smack 无关的模型。
+     *
+     * @return 花名册条目
+     */
+    private fun RosterEntry.toRosterItem(): RosterItem = RosterItem(
+        jid = jid.asBareJid().toString(),
+        subscription = when (type) {
+            RosterPacket.ItemType.to -> RosterSubscription.TO
+            RosterPacket.ItemType.from -> RosterSubscription.FROM
+            RosterPacket.ItemType.both -> RosterSubscription.BOTH
+            RosterPacket.ItemType.remove -> RosterSubscription.REMOVE
+            else -> RosterSubscription.NONE
+        },
+    )
+
     private fun XmppException.toDisconnectReason(): DisconnectReason = when (this) {
         is XmppException.AuthenticationFailed -> DisconnectReason.AuthenticationFailed
         is XmppException.Conflict -> DisconnectReason.Conflict
@@ -405,5 +509,8 @@ class SmackXmppClient(
 
         /** 唯一启用的 SASL 机制 */
         const val SASL_MECHANISM = "SCRAM-SHA-1"
+
+        /** 花名册推送的缓冲条数（登录时加载花名册会一次推送全部条目） */
+        const val ROSTER_PUSH_BUFFER = 1024
     }
 }

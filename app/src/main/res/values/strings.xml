@@ -127,4 +127,9 @@
     <string name="profile_call">打电话</string>
     <string name="profile_not_found">该同事已离职或不在组织架构中</string>
     <string name="profile_no_dialer">没有可以拨打电话的应用</string>
+    <string name="profile_add_contact">添加到常用联系人</string>
+    <string name="profile_remove_contact">从常用联系人中移除</string>
+    <string name="profile_contact_added">已添加到常用联系人</string>
+    <string name="profile_contact_removed">已从常用联系人中移除</string>
+    <string name="contact_left">已离职</string>
 </resources>

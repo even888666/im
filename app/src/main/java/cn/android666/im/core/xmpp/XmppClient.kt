@@ -1,6 +1,7 @@
 package cn.android666.im.core.xmpp
 
 import cn.android666.im.core.xmpp.iq.IqRequest
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -86,6 +87,36 @@ interface XmppClient {
      * 响应格式错误（[XmppException.InvalidResponse]）
      */
     suspend fun <T> sendIq(request: IqRequest<T>): T
+
+    /**
+     * 花名册推送（RFC 6121）：本人在其他端或服务器修改了花名册（添加、订阅状态变化、删除）时发出，
+     * 跨越重连持续有效。删除时 subscription 为 [RosterSubscription.REMOVE]。
+     */
+    val rosterPushes: Flow<RosterItem>
+
+    /**
+     * 获取完整花名册（协议规范 §2.2 第 7 步）。
+     *
+     * @return 全部条目
+     * @throws XmppException 未连接、超时等
+     */
+    suspend fun loadRoster(): List<RosterItem>
+
+    /**
+     * 添加常用联系人（协议规范 §5.1）：roster set（名称留空）+ `<presence type='subscribe'/>`，服务器自动同意。
+     *
+     * @param jid 联系人 bare JID
+     * @throws XmppException 未连接、超时、服务器拒绝
+     */
+    suspend fun addRosterItem(jid: String)
+
+    /**
+     * 移除常用联系人：roster remove（同时取消双方订阅）。不在花名册中时什么也不做。
+     *
+     * @param jid 联系人 bare JID
+     * @throws XmppException 未连接、超时、服务器拒绝
+     */
+    suspend fun removeRosterItem(jid: String)
 
     /**
      * 立即检测连接是否仍然可用（发送 XEP-0199 ping，10 秒内无响应视为失效）。

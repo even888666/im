@@ -3,8 +3,10 @@ package cn.android666.im.core.database
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import cn.android666.im.core.database.entity.ContactEntity
 import cn.android666.im.testing.RoomSchemaHelper
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Test
@@ -44,6 +46,25 @@ class ImDatabaseMigrationTest {
         val db = openWithRoom()
         try {
             assertThat(db.syncStateDao().get("org:version")).isEqualTo("5")
+        } finally {
+            db.close()
+        }
+    }
+
+    /** 1 → 2（自动迁移，新增 contact 表）：原有组织架构数据保留，新表可用 */
+    @Test
+    fun migrate1To2_keepsDataAndAddsContactTable() = runTest {
+        RoomSchemaHelper.createDatabase(context, ImDatabase::class.java.name, TEST_DB, 1).apply {
+            execSQL("INSERT INTO department (id, parentId, name, sort, memberCount) VALUES ('d1', '', '总部', 10, 0)")
+            execSQL("INSERT INTO sync_state (`key`, value) VALUES ('org:version', '7')")
+            close()
+        }
+        val db = openWithRoom()
+        try {
+            assertThat(db.departmentDao().get("d1")?.name).isEqualTo("总部")
+            assertThat(db.syncStateDao().get("org:version")).isEqualTo("7")
+            db.contactDao().upsert(ContactEntity("10002@im.example.com", "to"))
+            assertThat(db.contactDao().observeIsContact("10002@im.example.com").first()).isTrue()
         } finally {
             db.close()
         }

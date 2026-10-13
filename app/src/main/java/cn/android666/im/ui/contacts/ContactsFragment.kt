@@ -19,12 +19,17 @@ import cn.android666.im.ui.base.collectWhenStarted
 import cn.android666.im.ui.profile.EmployeeProfileActivity
 
 /**
- * 通讯录首页（开发计划 3.16）：搜索同事、组织架构入口、我的群组入口（M6）、常用联系人（3.19），下拉刷新同步组织架构。
+ * 通讯录首页（开发计划 3.16、3.19）：搜索同事、组织架构入口、我的群组入口（M6）、常用联系人，下拉刷新同步组织架构。
  */
 class ContactsFragment : Fragment() {
 
     private val viewModel by viewModels<ContactsViewModel> {
-        viewModelFactory { initializer { ContactsViewModel(requireContext().appContainer.orgRepository) } }
+        viewModelFactory {
+            initializer {
+                val container = requireContext().appContainer
+                ContactsViewModel(container.orgRepository, container.contactRepository)
+            }
+        }
     }
 
     private var binding: FragmentContactsBinding? = null
@@ -55,6 +60,10 @@ class ContactsFragment : Fragment() {
         binding.results.layoutManager = LinearLayoutManager(requireContext())
         binding.results.adapter = adapter
 
+        val contactAdapter = ContactAdapter { EmployeeProfileActivity.start(requireContext(), it.jid) }
+        binding.frequentList.layoutManager = LinearLayoutManager(requireContext())
+        binding.frequentList.adapter = contactAdapter
+
         binding.searchInput.doAfterTextChanged { viewModel.onQueryChanged(it?.toString().orEmpty()) }
         binding.entryOrg.setOnClickListener { OrgBrowseActivity.start(requireContext()) }
         binding.entryGroups.setOnClickListener {
@@ -73,6 +82,10 @@ class ContactsFragment : Fragment() {
             binding.results.isVisible = searching && results!!.isNotEmpty()
             binding.resultsEmpty.isVisible = searching && results!!.isEmpty()
             adapter.submitList(results.orEmpty())
+        }
+        viewLifecycleOwner.collectWhenStarted(viewModel.contacts) { contacts ->
+            contactAdapter.submitList(contacts)
+            binding.frequentEmpty.isVisible = contacts.isEmpty()
         }
         viewLifecycleOwner.collectWhenStarted(viewModel.refreshing) { binding.refresh.isRefreshing = it }
         viewLifecycleOwner.collectWhenStarted(viewModel.messages) {

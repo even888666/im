@@ -214,7 +214,7 @@ cn.android666.im
 
 | 包 | 可以依赖 | 不能依赖 |
 | --- | --- | --- |
-| `ui` | `data`、`core/common`、`core/log` | `core/xmpp`、`core/database`、`core/network`（必须经过 Repository） |
+| `ui` | `data`、`core/common`、`core/log`；`core/xmpp` 中不含逻辑的模型类（XmppException、ConnectionState 等，见决策记录 A62） | `XmppClient`、`core/database`、`core/network`（必须经过 Repository） |
 | `data` | `core/*` | `ui`、`service` |
 | `core/xmpp/smack` | Smack | `data`、`ui` |
 | 其他 `core` | `core/common`、`core/log` | `data`、`ui` |

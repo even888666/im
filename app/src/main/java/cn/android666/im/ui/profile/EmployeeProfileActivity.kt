@@ -20,7 +20,8 @@ import cn.android666.im.ui.widget.NameAvatar
 import com.google.android.material.color.MaterialColors
 
 /**
- * 同事资料卡（开发计划 3.18）：姓名、职位、工号、部门、联系方式；发消息（M4 单聊完成后接入）、打电话（系统拨号盘）。
+ * 同事资料卡（开发计划 3.18、3.19）：姓名、职位、工号、部门、联系方式；发消息（M4 单聊完成后接入）、打电话（系统拨号盘）、
+ * 添加 / 移除常用联系人。
  */
 class EmployeeProfileActivity : AppCompatActivity() {
 
@@ -28,7 +29,7 @@ class EmployeeProfileActivity : AppCompatActivity() {
 
     private val viewModel by appViewModels { container ->
         val self = container.sessionManager.currentUsername?.let { "$it@${container.serverConfig.domain}" }
-        EmployeeProfileViewModel(container.orgRepository, jid, self)
+        EmployeeProfileViewModel(container.orgRepository, container.contactRepository, jid, self)
     }
 
     private lateinit var binding: ActivityEmployeeProfileBinding
@@ -45,7 +46,9 @@ class EmployeeProfileActivity : AppCompatActivity() {
         setContentView(binding.root)
         applySystemBarsPadding(binding.root)
         binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.toggleContact.setOnClickListener { viewModel.toggleContact() }
         collectWhenStarted(viewModel.state) { state -> state?.let(::render) }
+        collectWhenStarted(viewModel.messages) { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
     }
 
     /**
@@ -57,6 +60,9 @@ class EmployeeProfileActivity : AppCompatActivity() {
         val employee = state.employee
         binding.notFound.isVisible = employee == null
         binding.actions.isVisible = employee != null && !state.self
+        // 已离职的常用联系人也可以移除
+        binding.toggleContact.isVisible = !state.self && (employee != null || state.contact)
+        binding.toggleContact.setText(if (state.contact) R.string.profile_remove_contact else R.string.profile_add_contact)
         binding.fields.removeAllViews()
         if (employee == null) {
             val name = jid.substringBefore('@')

@@ -75,6 +75,12 @@
                         android:text="@string/contacts_frequent"
                         android:textAppearance="?attr/textAppearanceLabelLarge" />
 
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/frequentList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:nestedScrollingEnabled="false" />
+
                     <TextView
                         android:id="@+id/frequentEmpty"
                         android:layout_width="match_parent"

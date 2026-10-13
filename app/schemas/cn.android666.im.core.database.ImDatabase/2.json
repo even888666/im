@@ -1,0 +1,254 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "c31a46dcc85caaf0eb05989eec47c9e4",
+    "entities": [
+      {
+        "tableName": "department",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `parentId` TEXT NOT NULL, `name` TEXT NOT NULL, `sort` INTEGER NOT NULL, `memberCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentId",
+            "columnName": "parentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sort",
+            "columnName": "sort",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memberCount",
+            "columnName": "memberCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_department_parentId",
+            "unique": false,
+            "columnNames": [
+              "parentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_department_parentId` ON `${TABLE_NAME}` (`parentId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "employee",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`jid` TEXT NOT NULL, `empNo` TEXT NOT NULL, `name` TEXT NOT NULL, `pinyin` TEXT NOT NULL, `initials` TEXT NOT NULL, `deptId` TEXT NOT NULL, `title` TEXT NOT NULL, `mobile` TEXT NOT NULL, `phone` TEXT NOT NULL, `email` TEXT NOT NULL, `sort` INTEGER NOT NULL, `avatarHash` TEXT NOT NULL, PRIMARY KEY(`jid`))",
+        "fields": [
+          {
+            "fieldPath": "jid",
+            "columnName": "jid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "empNo",
+            "columnName": "empNo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinyin",
+            "columnName": "pinyin",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "initials",
+            "columnName": "initials",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deptId",
+            "columnName": "deptId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mobile",
+            "columnName": "mobile",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "phone",
+            "columnName": "phone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "email",
+            "columnName": "email",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sort",
+            "columnName": "sort",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "avatarHash",
+            "columnName": "avatarHash",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "jid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_employee_deptId",
+            "unique": false,
+            "columnNames": [
+              "deptId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_employee_deptId` ON `${TABLE_NAME}` (`deptId`)"
+          },
+          {
+            "name": "index_employee_name",
+            "unique": false,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_employee_name` ON `${TABLE_NAME}` (`name`)"
+          },
+          {
+            "name": "index_employee_pinyin",
+            "unique": false,
+            "columnNames": [
+              "pinyin"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_employee_pinyin` ON `${TABLE_NAME}` (`pinyin`)"
+          },
+          {
+            "name": "index_employee_initials",
+            "unique": false,
+            "columnNames": [
+              "initials"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_employee_initials` ON `${TABLE_NAME}` (`initials`)"
+          },
+          {
+            "name": "index_employee_empNo",
+            "unique": false,
+            "columnNames": [
+              "empNo"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_employee_empNo` ON `${TABLE_NAME}` (`empNo`)"
+          },
+          {
+            "name": "index_employee_mobile",
+            "unique": false,
+            "columnNames": [
+              "mobile"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_employee_mobile` ON `${TABLE_NAME}` (`mobile`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sync_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      },
+      {
+        "tableName": "contact",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`jid` TEXT NOT NULL, `subscription` TEXT NOT NULL, PRIMARY KEY(`jid`))",
+        "fields": [
+          {
+            "fieldPath": "jid",
+            "columnName": "jid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subscription",
+            "columnName": "subscription",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "jid"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c31a46dcc85caaf0eb05989eec47c9e4')"
+    ]
+  }
+}
