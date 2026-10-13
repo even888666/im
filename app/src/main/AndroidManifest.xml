@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Android 13+ 显示通知需要运行时权限，由保活设置向导申请（功能清单 §3） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 开机自启（功能清单 §3） -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--
         关闭备份（allowBackup=false，Android 12+ 另见 data_extraction_rules.xml）：
@@ -52,6 +54,16 @@
                 android:value="企业即时通讯：终端没有厂商推送通道，需保持与企业服务器的长连接以实时接收消息和来电" />
         </service>
 
+        <!-- 开机自启、应用升级后恢复前台服务 -->
+        <receiver
+            android:name=".service.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- 日志库初始化：用本项目的 LogInitializer 替代库自带的 LogbackInitializer（见 日志库/日志库说明.md） -->
         <provider
             android:name="androidx.startup.InitializationProvider"
@@ -64,6 +76,10 @@
                 android:value="androidx.startup" />
             <meta-data
                 android:name="cn.android666.logback.android.LogbackInitializer"
+                tools:node="remove" />
+            <!-- WorkManager 改为按需初始化（App 实现 Configuration.Provider），移除默认初始化器 -->
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
                 tools:node="remove" />
         </provider>
     </application>

@@ -16,6 +16,8 @@ import cn.android666.im.data.session.steps.CapabilitiesStep
 import cn.android666.im.data.session.steps.EnableCarbonsStep
 import cn.android666.im.data.session.steps.InitialPresenceStep
 import cn.android666.im.data.session.steps.ServerTimeStep
+import cn.android666.im.service.ImService
+import cn.android666.im.service.KeepAliveChecker
 import cn.android666.im.core.xmpp.ServerConfig
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.connection.XmppConnectionManager
@@ -127,6 +129,17 @@ class AppContainer(context: Context) {
     /** 前后台切换处理（CSI、回到前台立即重连） */
     val appVisibilityHandler: AppVisibilityHandler by lazy {
         AppVisibilityHandler(xmppClient, connectionManager, applicationScope)
+    }
+
+    /** 保活检查：开机、升级、定期巡检时调用 */
+    val keepAliveChecker: KeepAliveChecker by lazy {
+        KeepAliveChecker(
+            isServiceRunning = { ImService.isRunning },
+            hasSavedCredential = { credentialStore.load()?.canAutoLogin == true },
+            startService = { reason -> ImService.start(appContext, reason) },
+            connectionState = { xmppClient.connectionState.value },
+            reconnectNow = connectionManager::reconnectNow,
+        )
     }
 
     /** 日志文件名前缀管理：登录成功后切换为工号 */

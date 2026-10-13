@@ -101,7 +101,8 @@ class ConnectionManagerIT {
             assertThat(client.checkAlive()).isFalse()
             // ping 超时为 10 秒
             assertThat(System.currentTimeMillis() - started).isLessThan(15_000)
-            assertThat(client.connectionState.value).isInstanceOf(ConnectionState.Disconnected::class.java)
+            // 断开后连接管理器会立即开始重连，状态可能已经变为 Connecting，只要求不再是已认证
+            assertThat(client.connectionState.value).isNotInstanceOf(ConnectionState.Authenticated::class.java)
         } finally {
             dockerOpenfire("unpause")
         }

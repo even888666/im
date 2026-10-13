@@ -157,6 +157,7 @@ dependencies {
     implementation(libs.logback.android)
     implementation(libs.androidx.startup.runtime)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.work.runtime.ktx)
     // XMPP（Smack），只允许 core/xmpp/smack 包引用（Android工程架构.md §3.3）
     implementation(libs.smack.android.extensions)
     implementation(libs.smack.tcp)
@@ -172,6 +173,7 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.mockk)
     testImplementation(libs.smack.java11)
+    testImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }

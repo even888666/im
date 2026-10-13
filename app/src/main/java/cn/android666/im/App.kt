@@ -2,12 +2,14 @@ package cn.android666.im
 
 import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.work.Configuration
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import cn.android666.im.core.log.Logs
 import cn.android666.im.data.session.SessionState
 import cn.android666.im.di.AppContainer
 import cn.android666.im.service.ImService
+import cn.android666.im.service.KeepAliveWorker
 import kotlinx.coroutines.launch
 
 /**
@@ -16,7 +18,18 @@ import kotlinx.coroutines.launch
  * 日志库不在这里初始化：它由 AndroidX Startup（[cn.android666.im.core.log.LogInitializer]）
  * 在 Application.onCreate 之前完成，以便记录更早的日志。
  */
-class App : Application() {
+class App : Application(), Configuration.Provider {
+
+    /**
+     * WorkManager 按需初始化的配置（Manifest 中已移除默认的 WorkManagerInitializer）：
+     * 第一次调用 WorkManager.getInstance 时用这里的配置初始化。这样不依赖 AndroidX Startup 的执行时机，
+     * Robolectric 测试中也能正常使用 WorkManager。
+     */
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setMinimumLoggingLevel(if (BuildConfig.DEBUG) android.util.Log.INFO else android.util.Log.ERROR)
+            .build()
+
 
     /** 应用级依赖容器，在 [onCreate] 中创建后不再改变 */
     lateinit var container: AppContainer
@@ -27,6 +40,7 @@ class App : Application() {
         container = AppContainer(this)
         observeAppVisibility()
         bindServiceToSession()
+        KeepAliveWorker.schedule(this)
         Logs.file(TAG).info(
             "应用启动：versionName={}，versionCode={}，debug={}",
             BuildConfig.VERSION_NAME,
