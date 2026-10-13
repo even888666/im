@@ -1,11 +1,13 @@
 package cn.android666.im.core.database.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import cn.android666.im.core.database.entity.MessageEntity
+import cn.android666.im.core.database.entity.MessageWithSender
 import kotlinx.coroutines.flow.Flow
 
 /** 消息表的访问 */
@@ -154,6 +156,22 @@ interface MessageDao {
      */
     @Query("SELECT * FROM message WHERE conversationId = :conversationId ORDER BY serverTime DESC, rowId DESC LIMIT :limit")
     fun observeLatest(conversationId: String, limit: Int): Flow<List<MessageEntity>>
+
+    /**
+     * 聊天页分页（开发计划 4.8）：会话中的消息，新的在前（列表倒序显示，最新的在底部），附带发送方姓名与头像。
+     *
+     * @param conversationId 会话 ID
+     * @return 分页数据源（数据变化时自动失效重新加载）
+     */
+    @Query(
+        """
+        SELECT m.*, e.name AS senderName, e.avatarHash AS senderAvatarHash
+        FROM message AS m LEFT JOIN employee AS e ON e.jid = m.senderJid
+        WHERE m.conversationId = :conversationId
+        ORDER BY m.serverTime DESC, m.rowId DESC
+        """,
+    )
+    fun pagingSource(conversationId: String): PagingSource<Int, MessageWithSender>
 
     /**
      * 会话的最后一条消息（删除消息后重新计算会话预览）。

@@ -15,10 +15,12 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import cn.android666.im.R
 import cn.android666.im.core.log.Logs
 import cn.android666.im.data.conversation.ConversationItem
+import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.databinding.FragmentConversationsBinding
 import cn.android666.im.ui.base.MessageDialogFragment
 import cn.android666.im.ui.base.appContainer
 import cn.android666.im.ui.base.collectWhenStarted
+import cn.android666.im.ui.chat.ChatActivity
 
 /**
  * 主界面"消息" Tab：会话列表（开发计划 4.7，功能清单 §10）。点击进入聊天页，长按弹出操作菜单。
@@ -107,13 +109,17 @@ class ConversationListFragment : Fragment() {
     }
 
     /**
-     * 打开会话（聊天页见开发计划 4.8）。
+     * 打开会话的聊天页；群聊（M6）暂未提供。
      *
      * @param item 会话
      */
     private fun openConversation(item: ConversationItem) {
         log.info("打开会话：{}", item.id)
-        Toast.makeText(requireContext(), R.string.feature_pending, Toast.LENGTH_SHORT).show()
+        if (item.kind == ConversationKind.GROUP) {
+            Toast.makeText(requireContext(), R.string.feature_pending, Toast.LENGTH_SHORT).show()
+            return
+        }
+        ChatActivity.start(requireContext(), item.id, item.kind)
     }
 
     /** 销毁视图时释放 binding */

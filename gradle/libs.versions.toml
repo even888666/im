@@ -30,6 +30,7 @@ desugarJdkLibs = "2.1.5"
 datastore = "1.2.1"
 work = "2.12.0"
 room = "2.8.5"
+paging = "3.5.3"
 coil = "3.6.3"
 exifinterface = "1.4.2"
 # 测试
@@ -73,6 +74,10 @@ androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterfa
 # Room：2.7 起 room-ktx 的协程支持已并入 room-runtime
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+# 聊天页分页（开发计划 4.8）：Room 直接生成 PagingSource
+androidx-room-paging = { group = "androidx.room", name = "room-paging", version.ref = "room" }
+androidx-paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.ref = "paging" }
+androidx-paging-testing = { group = "androidx.paging", name = "paging-testing", version.ref = "paging" }
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 # 测试
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }

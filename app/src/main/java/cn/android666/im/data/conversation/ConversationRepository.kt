@@ -127,6 +127,18 @@ class ConversationRepository(private val databases: UserDatabaseHolder) {
 }
 
 /**
+ * 会话类型 → 数据库中的类型（发送消息时会话不存在需要创建）。
+ *
+ * @return ConversationEntity.TYPE_*
+ */
+fun ConversationKind.toEntityType(): Int = when (this) {
+    ConversationKind.SINGLE -> ConversationEntity.TYPE_SINGLE
+    ConversationKind.GROUP -> ConversationEntity.TYPE_GROUP
+    ConversationKind.NOTICE -> ConversationEntity.TYPE_NOTICE
+    ConversationKind.SELF -> ConversationEntity.TYPE_SELF
+}
+
+/**
  * 数据库记录 → 界面模型。
  *
  * @return 会话列表项

@@ -1,0 +1,101 @@
+package cn.android666.im.ui.chat
+
+import android.os.Looper
+import android.widget.EditText
+import android.widget.TextView
+import androidx.appcompat.widget.Toolbar
+import androidx.recyclerview.widget.RecyclerView
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import cn.android666.im.App
+import cn.android666.im.R
+import cn.android666.im.core.database.entity.EmployeeEntity
+import cn.android666.im.data.conversation.ConversationKind
+import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+
+/**
+ * 聊天页的 Robolectric 测试：使用真实的 App 容器（10001 的用户数据库），打开页面、发送文字，消息出现在列表中。
+ */
+@RunWith(RobolectricTestRunner::class)
+class ChatActivityTest {
+
+    private val app = ApplicationProvider.getApplicationContext<App>()
+
+    @Before
+    fun setUp() = runBlocking {
+        val db = app.container.userDatabaseHolder.open("10001")
+        db.employeeDao().upsert(
+            listOf(EmployeeEntity(BOB, "10002", "李四", "lisi", "ls", "d", "", "", "", "", 0, "")),
+        )
+    }
+
+    @After
+    fun tearDown() {
+        app.container.userDatabaseHolder.close()
+        app.deleteDatabase("im_10001.db")
+    }
+
+    /**
+     * 推进主线程直到条件满足（Room 查询在后台线程执行）。
+     *
+     * @param condition 条件
+     */
+    private fun waitUntil(condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            if (condition()) return
+            Thread.sleep(10)
+        }
+        throw AssertionError("等待超时")
+    }
+
+    @Test
+    fun open_send_showsBubble() {
+        val intent = ChatActivity.intent(app, BOB, ConversationKind.SINGLE)
+        ActivityScenario.launch<ChatActivity>(intent).use { scenario ->
+            lateinit var list: RecyclerView
+            lateinit var toolbar: Toolbar
+            scenario.onActivity {
+                list = it.findViewById(R.id.list)
+                toolbar = it.findViewById(R.id.toolbar)
+            }
+            waitUntil { toolbar.title == "李四" }
+
+            scenario.onActivity {
+                it.findViewById<EditText>(R.id.input).setText("你好，李四")
+                assertThat(it.findViewById<android.view.View>(R.id.send).isEnabled).isTrue()
+                it.findViewById<android.view.View>(R.id.send).performClick()
+            }
+            waitUntil {
+                list.findViewHolderForAdapterPosition(0)?.itemView?.findViewById<TextView>(R.id.bubble)?.text?.toString() == "你好，李四"
+            }
+            scenario.onActivity {
+                // 发送后清空输入框
+                assertThat(it.findViewById<EditText>(R.id.input).text.toString()).isEmpty()
+            }
+        }
+    }
+
+    /** 文件传输助手：标题为固定名称 */
+    @Test
+    fun selfConversation_title() {
+        val intent = ChatActivity.intent(app, "10001@im.example.com", ConversationKind.SELF)
+        ActivityScenario.launch<ChatActivity>(intent).use { scenario ->
+            lateinit var toolbar: Toolbar
+            scenario.onActivity { toolbar = it.findViewById(R.id.toolbar) }
+            waitUntil { toolbar.title == app.getString(R.string.conversation_self) }
+        }
+    }
+
+    private companion object {
+        const val BOB = "10002@im.example.com"
+    }
+}

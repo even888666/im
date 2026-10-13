@@ -1,5 +1,9 @@
 package cn.android666.im.data.message
 
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.map
 import androidx.room.withTransaction
 import cn.android666.im.core.common.IdGenerator
 import cn.android666.im.core.common.ServerClock
@@ -10,7 +14,12 @@ import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.log.Logs
 import cn.android666.im.core.xmpp.extension.msg.Mention
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /**
  * 消息仓库（Android工程架构.md §4.5）：消息写库（事务内完成去重、会话更新、未读数计算）与发送入口。
@@ -52,6 +61,23 @@ class MessageRepository(
      * @return 会话 ID；没有打开聊天页时为 null
      */
     fun activeConversationId(): String? = activeConversation.value
+
+    /**
+     * 聊天页的分页消息（开发计划 4.8）：新的在前，数据库变化时自动刷新。未登录时为空。
+     *
+     * @param conversationId 会话 ID
+     * @return 分页数据
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun pagedMessages(conversationId: String): Flow<PagingData<ChatMessage>> = databases.database.flatMapLatest { db ->
+        if (db == null) {
+            flowOf(PagingData.empty())
+        } else {
+            Pager(PagingConfig(pageSize = PAGE_SIZE, enablePlaceholders = false)) { db.messageDao().pagingSource(conversationId) }
+                .flow
+                .map { page -> page.map { it.toChatMessage() } }
+        }
+    }
 
     /**
      * 保存一条收到的消息（开发计划 4.4，Android工程架构.md §6.1）：事务内去重 → 插入 → 更新会话与未读数。
@@ -207,5 +233,8 @@ class MessageRepository(
 
         /** 文本消息长度上限（协议规范 §1.6，按 Unicode 码点计） */
         const val MAX_TEXT_LENGTH = 5000
+
+        /** 聊天页每页加载的消息数 */
+        private const val PAGE_SIZE = 30
     }
 }

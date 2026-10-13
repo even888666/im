@@ -110,6 +110,20 @@
     <string name="conversation_action_mark_read">标为已读</string>
     <string name="conversation_delete_confirm">删除后，将清空该会话的本地聊天记录</string>
     <string name="conversation_delete">删除</string>
+    <!-- 聊天页（开发计划 4.8） -->
+    <string name="chat_input_hint">发消息</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_resend">重发</string>
+    <string name="chat_resend_confirm">重发这条消息？</string>
+    <string name="chat_unread">未读</string>
+    <string name="chat_read">已读</string>
+    <string name="chat_text_too_long">消息不能超过 5000 字</string>
+    <string name="chat_send_error">发送失败，请稍后重试</string>
+    <string name="chat_error_sensitive">消息包含敏感内容，发送失败</string>
+    <string name="chat_retracted_self">你撤回了一条消息</string>
+    <string name="chat_retracted_peer">对方撤回了一条消息</string>
+    <string name="chat_time_with_day">%1$s %2$02d:%3$02d</string>
+    <string name="chat_time_older_day">%1$d年%2$d月%3$d日</string>
     <string-array name="conversation_weekdays">
         <item>星期一</item>
         <item>星期二</item>

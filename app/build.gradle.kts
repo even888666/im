@@ -168,6 +168,8 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.paging)
+    implementation(libs.androidx.paging.runtime)
     implementation(libs.coil)
     implementation(libs.androidx.exifinterface)
     ksp(libs.androidx.room.compiler)
@@ -187,6 +189,7 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.smack.java11)
     testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.paging.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }

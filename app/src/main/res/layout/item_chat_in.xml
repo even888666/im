@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 聊天页：对方发来的消息（左侧头像 + 气泡）。文字中的链接、电话号码可点击 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="64dp"
+    android:paddingBottom="6dp">
+
+    <cn.android666.im.ui.widget.AvatarView
+        android:id="@+id/avatar"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        app:avatarTextSize="14sp" />
+
+    <TextView
+        android:id="@+id/bubble"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:autoLink="web|phone"
+        android:background="@drawable/bg_bubble_in"
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp"
+        android:textAppearance="?attr/textAppearanceBodyLarge"
+        android:textIsSelectable="false"
+        tools:text="你好，下午 3 点开会" />
+</LinearLayout>

@@ -1,0 +1,146 @@
+package cn.android666.im.ui.chat
+
+import androidx.annotation.StringRes
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import androidx.paging.insertSeparators
+import androidx.paging.map
+import cn.android666.im.R
+import cn.android666.im.core.log.Logs
+import cn.android666.im.data.conversation.ConversationKind
+import cn.android666.im.data.conversation.ConversationRepository
+import cn.android666.im.data.conversation.toEntityType
+import cn.android666.im.data.message.MessageRepository
+import cn.android666.im.data.org.OrgRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+/** 聊天页的一次性事件 */
+sealed interface ChatEvent {
+    /** 消息已交给发送队列：清空输入框 */
+    data object Sent : ChatEvent
+
+    /**
+     * 提示。
+     *
+     * @property message 提示文字
+     */
+    data class Toast(@param:StringRes val message: Int) : ChatEvent
+}
+
+/**
+ * 聊天页（开发计划 4.8）：分页消息（带时间分隔）、发送、重发、当前查看的会话。
+ *
+ * @property conversationId 会话 ID（对方 bare JID / 群 JID / 本人 bare JID）
+ * @property kind 会话类型
+ * @property messages 消息仓库
+ * @property conversations 会话仓库（清除未读）
+ * @param org 组织架构（标题显示对方姓名）
+ */
+class ChatViewModel(
+    val conversationId: String,
+    val kind: ConversationKind,
+    private val messages: MessageRepository,
+    private val conversations: ConversationRepository,
+    org: OrgRepository,
+) : ViewModel() {
+
+    private val log = Logs.file(TAG)
+
+    /** 分页消息，相邻消息间隔超过 5 分钟时插入时间分隔 */
+    val items: Flow<PagingData<ChatListItem>> = messages.pagedMessages(conversationId)
+        .map { page ->
+            page.map<_, ChatListItem> { ChatListItem.Message(it) }
+                .insertSeparators { newer, older ->
+                    ChatTimeline.separator((newer as? ChatListItem.Message)?.message, (older as? ChatListItem.Message)?.message)
+                }
+        }
+        .cachedIn(viewModelScope)
+
+    /** 对方姓名（单聊，组织架构中有时）；null 时界面显示工号或固定名称 */
+    val peerName: StateFlow<String?> =
+        (if (kind == ConversationKind.SINGLE) org.observeEmployee(conversationId).map { it?.name } else flowOf(null))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
+
+    private val eventChannel = Channel<ChatEvent>(Channel.BUFFERED)
+
+    /** 一次性事件 */
+    val events: Flow<ChatEvent> = eventChannel.receiveAsFlow()
+
+    /**
+     * 发送文本。空白不发送；超过 5000 字提示。
+     *
+     * @param text 输入框内容
+     */
+    fun send(text: String) {
+        if (text.isBlank()) return
+        if (text.codePointCount(0, text.length) > MessageRepository.MAX_TEXT_LENGTH) {
+            eventChannel.trySend(ChatEvent.Toast(R.string.chat_text_too_long))
+            return
+        }
+        viewModelScope.launch {
+            try {
+                messages.sendText(conversationId, kind.toEntityType(), text)
+                eventChannel.send(ChatEvent.Sent)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("发送失败：会话={}", conversationId, e)
+                eventChannel.send(ChatEvent.Toast(R.string.chat_send_error))
+            }
+        }
+    }
+
+    /**
+     * 重发一条发送失败的消息。
+     *
+     * @param rowId 消息 rowId
+     */
+    fun resend(rowId: Long) {
+        viewModelScope.launch {
+            try {
+                messages.resend(rowId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("重发失败：rowId={}", rowId, e)
+            }
+        }
+    }
+
+    /** 页面可见：该会话的新消息不计未读，清除已有未读（发送已读标记见开发计划 4.9） */
+    fun onVisible() {
+        messages.setActiveConversation(conversationId)
+        viewModelScope.launch {
+            try {
+                conversations.clearUnread(conversationId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("清除未读失败：{}", conversationId, e)
+            }
+        }
+    }
+
+    /** 页面不可见 */
+    fun onHidden() {
+        if (messages.activeConversationId() == conversationId) messages.setActiveConversation(null)
+    }
+
+    private companion object {
+        const val TAG = "ChatViewModel"
+
+        /** 页面不可见超过该时间后停止查询 */
+        const val STOP_TIMEOUT_MILLIS = 5_000L
+    }
+}

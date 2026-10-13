@@ -11,6 +11,9 @@ import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import cn.android666.im.R
+import cn.android666.im.ui.base.appContainer
+import cn.android666.im.ui.chat.ChatActivity
+import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.databinding.ActivityEmployeeProfileBinding
 import cn.android666.im.databinding.ItemProfileFieldBinding
 import cn.android666.im.ui.base.appViewModels
@@ -84,9 +87,11 @@ class EmployeeProfileActivity : AppCompatActivity() {
         addField(R.string.profile_phone, employee.phone) { dial(employee.phone) }
         addField(R.string.profile_email, employee.email) { sendEmail(employee.email) }
 
-        // 发消息：单聊（M4）完成后跳转聊天页
+        // 发消息：单聊（M4，开发计划 4.8）；自己的资料卡进入"文件传输助手"
         binding.sendMessage.setOnClickListener {
-            Toast.makeText(this, R.string.feature_pending, Toast.LENGTH_SHORT).show()
+            val jid = intent.getStringExtra(EXTRA_JID) ?: return@setOnClickListener
+            val kind = if (jid == appContainer.selfJid()) ConversationKind.SELF else ConversationKind.SINGLE
+            ChatActivity.start(this, jid, kind)
         }
         val phone = employee.mobile.ifEmpty { employee.phone }
         binding.call.isEnabled = phone.isNotEmpty()

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 聊天页：本人发出的消息（右侧头像 + 气泡，气泡左侧为发送状态：发送中 / 失败（点击重发）/ 未读 / 已读） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingStart="48dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="6dp">
+
+    <!-- 占满头像左侧的剩余宽度，内容靠右：状态紧挨着气泡 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="end|bottom"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp">
+
+            <ProgressBar
+                android:id="@+id/sending"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:visibility="gone" />
+
+            <ImageButton
+                android:id="@+id/failed"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/chat_resend"
+                android:src="@drawable/ic_msg_failed"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/readState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceLabelSmall"
+                android:visibility="gone"
+                tools:text="未读"
+                tools:visibility="visible" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/bubble"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:autoLink="web|phone"
+                android:background="@drawable/bg_bubble_out"
+                android:paddingStart="12dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="8dp"
+                android:textAppearance="?attr/textAppearanceBodyLarge"
+                android:textColor="?attr/colorOnPrimaryContainer"
+                tools:text="好的，我准时参加" />
+
+            <!-- 发送失败的原因（如敏感词） -->
+            <TextView
+                android:id="@+id/error"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorError"
+                android:visibility="gone"
+                tools:text="消息包含敏感内容，发送失败"
+                tools:visibility="visible" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <cn.android666.im.ui.widget.AvatarView
+        android:id="@+id/avatar"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="8dp"
+        app:avatarTextSize="14sp" />
+</LinearLayout>

@@ -133,6 +133,19 @@ data class ConversationEntity(
 }
 
 /**
+ * 聊天页的一条消息：消息 + 发送方的姓名与头像（左连接员工表，已离职或未同步的为 null）。
+ *
+ * @property message 消息
+ * @property senderName 发送方姓名
+ * @property senderAvatarHash 发送方头像哈希
+ */
+data class MessageWithSender(
+    @Embedded val message: MessageEntity,
+    val senderName: String?,
+    val senderAvatarHash: String?,
+)
+
+/**
  * 会话列表项：会话 + 对方的员工信息（左连接员工表，群聊、文件传输助手、已离职的为 null）+ 最后一条消息的方向与状态
  * （发送中 / 失败时在预览前显示图标）。
  *
