@@ -82,6 +82,7 @@ data class LocalMedia(
  * @property retractedBy 撤回者 bare JID
  * @property reply 引用的原消息预览；不是引用回复时为 null
  * @property media 附件的本地状态；没有附件记录（文本、收到的图片）时为 null
+ * @property voicePlayed 语音是否已听（对方发来的语音未听时显示红点）
  */
 data class ChatMessage(
     val rowId: Long,
@@ -101,6 +102,7 @@ data class ChatMessage(
     val retractedBy: String?,
     val reply: ReplyPreview? = null,
     val media: LocalMedia? = null,
+    val voicePlayed: Boolean = true,
 )
 
 /**
@@ -139,6 +141,7 @@ internal fun MessageWithSender.toChatMessage(): ChatMessage {
             replyRetracted == true -> ReplyPreview.Retracted
             else -> ReplyPreview.Found(replySenderJid.orEmpty(), replySenderName, replyBody.orEmpty())
         },
+        voicePlayed = m.voicePlayed,
         media = if (mediaState == null && thumbnailPath == null) {
             null
         } else {

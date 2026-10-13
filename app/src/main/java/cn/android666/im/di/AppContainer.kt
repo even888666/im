@@ -23,6 +23,7 @@ import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.ChatStates
 import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MediaSender
+import cn.android666.im.data.message.VoicePlayback
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.Retractions
@@ -60,11 +61,13 @@ import cn.android666.im.core.common.IdGenerator
 import cn.android666.im.core.common.ServerClock
 import cn.android666.im.core.common.SystemTimeClock
 import cn.android666.im.core.common.UuidIdGenerator
+import cn.android666.im.core.media.AndroidVoicePlayer
 import cn.android666.im.core.media.ImageCompressor
 import cn.android666.im.core.log.LogFilePrefixManager
 import cn.android666.im.core.log.LogFilePrefixStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import java.io.File
 
 /**
@@ -277,6 +280,19 @@ class AppContainer(context: Context) {
             workDir = { userDatabaseHolder.username?.let { File(appContext.cacheDir, "media/$it/out") } },
             cache = ::mediaCache,
             scope = applicationScope,
+            io = dispatchers.io,
+        )
+    }
+
+    /** 语音消息播放（开发计划 5.5）：播放器回调在主线程，使用主线程作用域 */
+    val voicePlayback: VoicePlayback by lazy {
+        VoicePlayback(
+            player = AndroidVoicePlayer(appContext),
+            downloader = fileDownloader,
+            cache = ::mediaCache,
+            databases = userDatabaseHolder,
+            earpiece = { appSettingsStore.voiceEarpiece.first() },
+            scope = CoroutineScope(SupervisorJob() + dispatchers.main),
             io = dispatchers.io,
         )
     }

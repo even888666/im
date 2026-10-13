@@ -352,6 +352,37 @@ class MediaSenderTest {
         assertThat(client.sentMessages).isEmpty()
     }
 
+    /** 语音：只上传一个文件，消息带时长；录音文件被移走 */
+    @Test
+    fun sendVoice_uploadsAndSends() = runTest {
+        val rig = rig()
+        val recorded = temp.newFile("rec.m4a").apply { writeBytes(ByteArray(500)) }
+
+        val saved = rig.sender.sendVoice(BOB, ConversationEntity.TYPE_SINGLE, recorded, 3_200)
+        assertThat(saved.body).isEqualTo("[语音]")
+        assertThat(recorded.exists()).isFalse()
+        runCurrent()
+
+        assertThat(uploader.uploaded).hasSize(1)
+        assertThat(uploader.uploaded.single()).endsWith(".m4a")
+        val content = MessageCodec.parse(client.sentMessages.single()).message.content as MessageContent.Voice
+        assertThat(content.file.duration).isEqualTo(3_200)
+        assertThat(content.file.mime).isEqualTo("audio/mp4")
+        assertThat(content.file.name).isEqualTo("voice.m4a")
+        assertThat(content.file.size).isEqualTo(500)
+        assertThat(content.file.url).startsWith("https://im.example.com/upload/")
+        assertThat(rig.message(saved.msgId).status).isEqualTo(MessageEntity.STATUS_SENT)
+    }
+
+    /** 时长超出范围时截到 1 ~ 60 秒 */
+    @Test
+    fun sendVoice_durationClamped() = runTest {
+        val rig = rig(login = false)
+        val saved = rig.sender.sendVoice(BOB, ConversationEntity.TYPE_SINGLE, temp.newFile(), 75_000)
+        val content = MessageJson.decodeContent(saved.type, saved.contentJson) as MessageContent.Voice
+        assertThat(content.file.duration).isEqualTo(VoiceRules.MAX_MILLIS)
+    }
+
     private companion object {
         const val BOB = "10002@im.example.com"
         const val CAROL = "10003@im.example.com"

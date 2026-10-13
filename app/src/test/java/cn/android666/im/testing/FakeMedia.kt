@@ -88,3 +88,79 @@ class FakeImageProcessor : ImageProcessor {
         const val MAIN_SIZE = 2000
     }
 }
+
+/** 假的录音器：开始时创建文件，停止时写入数据 */
+class FakeVoiceRecorder : cn.android666.im.core.media.VoiceRecorder {
+
+    /** 正在录音的文件 */
+    var recording: File? = null
+        private set
+
+    /** 开始录音时抛出的异常 */
+    var startError: java.io.IOException? = null
+
+    /** stop 的返回值 */
+    var stopResult = true
+
+    /** 调用记录：start / stop / cancel */
+    val calls = mutableListOf<String>()
+
+    override fun start(file: File) {
+        startError?.let { throw it }
+        calls += "start"
+        file.parentFile?.mkdirs()
+        file.createNewFile()
+        recording = file
+    }
+
+    override fun stop(): Boolean {
+        calls += "stop"
+        val file = recording ?: return false
+        recording = null
+        if (stopResult) file.writeBytes(ByteArray(1_000)) else file.delete()
+        return stopResult
+    }
+
+    override fun cancel() {
+        calls += "cancel"
+        recording?.delete()
+        recording = null
+    }
+}
+
+/** 假的播放器：记录播放的文件，测试中手动结束 */
+class FakeVoicePlayer : cn.android666.im.core.media.VoicePlayer {
+
+    /** 正在播放的文件与是否听筒 */
+    var current: Pair<File, Boolean>? = null
+        private set
+
+    /** 播放过的文件（按顺序） */
+    val played = mutableListOf<File>()
+
+    /** 播放时抛出的异常 */
+    var playError: java.io.IOException? = null
+
+    /** 结束回调 */
+    private var onComplete: (() -> Unit)? = null
+
+    override fun play(file: File, earpiece: Boolean, onComplete: () -> Unit) {
+        playError?.let { throw it }
+        current = file to earpiece
+        played += file
+        this.onComplete = onComplete
+    }
+
+    override fun stop() {
+        current = null
+        onComplete = null
+    }
+
+    /** 模拟播放结束 */
+    fun complete() {
+        val callback = onComplete
+        current = null
+        onComplete = null
+        callback?.invoke()
+    }
+}

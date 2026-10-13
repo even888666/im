@@ -26,6 +26,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -129,6 +130,40 @@ class MediaSender(
         )
         val saved = repository.enqueueMedia(conversationId, conversationType, content, attachments)
         log.info("图片消息已写入，开始上传：msgId={}，会话={}，{} 字节，原图={}", saved.msgId, conversationId, size, original)
+        start(db, saved.rowId)
+        return saved
+    }
+
+    /**
+     * 发送语音（协议规范 §7.3）：录音文件移入待上传目录后上传、发送。
+     *
+     * @param conversationId 会话 ID
+     * @param conversationType 会话类型
+     * @param source 录音文件（m4a，会被移走）
+     * @param durationMillis 时长（毫秒），应在 [VoiceRules.MIN_MILLIS] ~ [VoiceRules.MAX_MILLIS] 之间
+     * @return 写入的消息
+     * @throws IOException 文件无法移动
+     * @throws IllegalStateException 未登录
+     */
+    suspend fun sendVoice(conversationId: String, conversationType: Int, source: File, durationMillis: Long): MessageEntity {
+        val db = databases.require()
+        val dir = workDir() ?: throw IllegalStateException("未登录")
+        val file = withContext(io) {
+            dir.mkdirs()
+            val target = File(dir, "${UUID.randomUUID()}.m4a")
+            if (!source.renameTo(target)) {
+                source.copyTo(target, overwrite = true)
+                source.delete()
+            }
+            target
+        }
+        val duration = durationMillis.coerceIn(VoiceRules.MIN_MILLIS, VoiceRules.MAX_MILLIS)
+        val content = MessageContent.Voice(FileInfo(url = "", name = VOICE_NAME, size = file.length(), mime = VOICE_MIME, duration = duration))
+        val attachments = listOf(
+            MediaFileEntity(msgRowId = 0, role = MediaFileEntity.ROLE_ORIGINAL, localPath = file.path, state = MediaFileEntity.STATE_UPLOADING),
+        )
+        val saved = repository.enqueueMedia(conversationId, conversationType, content, attachments)
+        log.info("语音消息已写入，开始上传：msgId={}，会话={}，{} 毫秒，{} 字节", saved.msgId, conversationId, duration, file.length())
         start(db, saved.rowId)
         return saved
     }
@@ -314,6 +349,12 @@ class MediaSender(
 
         /** 未连接时最长等待时间（与 SendQueue 一致） */
         const val CONNECT_WAIT_MILLIS = 30_000L
+
+        /** 语音消息的文件名（协议规范 §7.3 示例） */
+        const val VOICE_NAME = "voice.m4a"
+
+        /** 语音的 MIME 类型 */
+        const val VOICE_MIME = "audio/mp4"
 
         /** 进度写库的间隔（百分点） */
         private const val PROGRESS_STEP = 10

@@ -7,6 +7,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.cash.turbine.test
 import cn.android666.im.R
+import cn.android666.im.core.common.Clock
 import cn.android666.im.core.common.ServerClock
 import cn.android666.im.core.common.UuidIdGenerator
 import cn.android666.im.core.database.ImDatabase
@@ -15,25 +16,32 @@ import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.media.ImportedFile
 import cn.android666.im.core.media.MediaImporter
 import cn.android666.im.core.xmpp.Credential
+import cn.android666.im.core.xmpp.extension.msg.FileInfo
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
+import cn.android666.im.data.file.Downloader
 import cn.android666.im.data.file.MediaCache
 import cn.android666.im.data.message.MediaSender
+import cn.android666.im.data.message.MessageJson
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.MessageState
 import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.Retractions
 import cn.android666.im.data.message.SendError
 import cn.android666.im.data.message.SendQueue
+import cn.android666.im.data.message.VoicePlayback
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.testing.FakeClock
 import cn.android666.im.testing.FakeImageProcessor
 import cn.android666.im.testing.FakeUploader
+import cn.android666.im.testing.FakeVoicePlayer
+import cn.android666.im.testing.FakeVoiceRecorder
 import cn.android666.im.testing.FakeXmppClient
 import cn.android666.im.testing.MainDispatcherRule
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -91,6 +99,9 @@ class ChatViewModelMediaTest {
     @After
     fun tearDown() = holder.close()
 
+    private val recorder = FakeVoiceRecorder()
+    private val player = FakeVoicePlayer()
+
     /** 被测对象 */
     private fun TestScope.newVm(): ChatViewModel {
         val clock = FakeClock(startMillis = 10_000_000)
@@ -105,9 +116,17 @@ class ChatViewModelMediaTest {
             client, holder, messages, uploader, images, workDir = { workDir }, cache = { MediaCache(cacheDir) },
             scope = backgroundScope, io = mainDispatcherRule.testDispatcher,
         )
+        val playback = VoicePlayback(
+            player, FakeVoiceDownloader(), { MediaCache(cacheDir) }, holder, { false }, backgroundScope, mainDispatcherRule.testDispatcher,
+        )
+        val vmClock = object : Clock {
+            override fun nowMillis() = testScheduler.currentTime
+            override fun elapsedMillis() = testScheduler.currentTime
+        }
         return ChatViewModel(
             BOB, ConversationKind.SINGLE, messages, conversations, readMarkers, retractions, OrgRepository(client, holder, clock),
-            media = media, importer = importer,
+            media = media, importer = importer, voiceRecorder = recorder, voiceDir = temp.newFolder("voice"),
+            voicePlayback = playback, clock = vmClock,
         )
     }
 
@@ -208,6 +227,102 @@ class ChatViewModelMediaTest {
 
         assertThat(db.messageDao().last(BOB)!!.status).isEqualTo(MessageEntity.STATUS_SENT)
         assertThat(client.sentMessages).hasSize(1)
+    }
+
+    /** 按住说话 3 秒后松开：发送语音 */
+    @Test
+    fun voice_holdAndRelease_sent() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+
+        vm.onVoicePress()
+        assertThat(vm.recording.value).isNotNull()
+        advanceTimeBy(3_000)
+        vm.onVoiceRelease()
+        runCurrent()
+
+        assertThat(vm.recording.value).isNull()
+        val message = db.messageDao().last(BOB)!!
+        assertThat(message.type).isEqualTo("voice")
+        val content = MessageJson.decodeContent(message.type, message.contentJson) as MessageContent.Voice
+        assertThat(content.file.duration).isEqualTo(3_000)
+    }
+
+    /** 不足 1 秒：提示太短，不发送 */
+    @Test
+    fun voice_tooShort_toast() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+
+        vm.events.test {
+            vm.onVoicePress()
+            advanceTimeBy(500)
+            vm.onVoiceRelease()
+            runCurrent()
+            assertThat(awaitItem()).isEqualTo(ChatEvent.Toast(R.string.chat_voice_too_short))
+        }
+        assertThat(db.messageDao().last(BOB)).isNull()
+    }
+
+    /** 上滑取消：不发送也不提示 */
+    @Test
+    fun voice_slideCancel() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+
+        vm.events.test {
+            vm.onVoicePress()
+            advanceTimeBy(2_000)
+            vm.onVoiceMove(cancelZone = true)
+            assertThat(vm.recording.value!!.cancelZone).isTrue()
+            vm.onVoiceRelease()
+            runCurrent()
+            expectNoEvents()
+        }
+        assertThat(db.messageDao().last(BOB)).isNull()
+    }
+
+    /** 离开页面：取消录音、停止播放 */
+    @Test
+    fun hidden_abortsRecordingAndStopsPlayback() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+        vm.onVoicePress()
+        advanceTimeBy(2_000)
+
+        vm.onHidden()
+        runCurrent()
+        assertThat(vm.recording.value).isNull()
+        assertThat(recorder.calls).contains("cancel")
+        assertThat(db.messageDao().last(BOB)).isNull()
+    }
+
+    /** 点击语音播放，再点停止；开始录音时停止播放 */
+    @Test
+    fun playVoice_toggleAndStopOnRecord() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+        val content = MessageContent.Voice(FileInfo("https://h/a.m4a", "voice.m4a", 1, "audio/mp4", duration = 2_000))
+        val row = db.messageDao().insert(
+            MessageEntity(
+                msgId = "v", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "voice",
+                body = "[语音]", contentJson = MessageJson.encodeContent(content), status = MessageEntity.STATUS_RECEIVED, serverTime = 1,
+            ),
+        )
+
+        vm.playVoice(row)
+        runCurrent()
+        assertThat(vm.playingVoice.value).isEqualTo(row)
+        assertThat(player.current).isNotNull()
+
+        vm.onVoicePress()
+        assertThat(vm.playingVoice.value).isNull()
+        assertThat(player.current).isNull()
+        vm.onVoiceAbort()
+    }
+
+    /** 假的下载：写入目标文件 */
+    private class FakeVoiceDownloader : Downloader {
+        override suspend fun download(url: String, target: File, sha256: String?, onProgress: (Long, Long) -> Unit): File {
+            target.parentFile?.mkdirs()
+            target.writeBytes(byteArrayOf(1))
+            return target
+        }
     }
 
     private companion object {

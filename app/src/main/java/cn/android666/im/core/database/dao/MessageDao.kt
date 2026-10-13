@@ -72,6 +72,33 @@ interface MessageDao {
     suspend fun updateContent(rowId: Long, contentJson: String): Int
 
     /**
+     * 标记语音已听（开发计划 5.5，去掉未听红点）。
+     *
+     * @param rowId rowId
+     * @return 更新的行数（已经听过时为 0）
+     */
+    @Query("UPDATE message SET voicePlayed = 1 WHERE rowId = :rowId AND voicePlayed = 0")
+    suspend fun markVoicePlayed(rowId: Long): Int
+
+    /**
+     * 某条语音之后的第一条未听的、对方发来的语音（播放完一条后自动播放下一条）。
+     *
+     * @param conversationId 会话 ID
+     * @param serverTime 当前语音的时间
+     * @param rowId 当前语音的 rowId（时间相同时按 rowId 排序）
+     * @return 下一条未听的语音；没有时为 null
+     */
+    @Query(
+        """
+        SELECT * FROM message
+        WHERE conversationId = :conversationId AND type = 'voice' AND direction = 0 AND voicePlayed = 0 AND retracted = 0
+          AND (serverTime > :serverTime OR (serverTime = :serverTime AND rowId > :rowId))
+        ORDER BY serverTime, rowId LIMIT 1
+        """,
+    )
+    suspend fun nextUnplayedVoice(conversationId: String, serverTime: Long, rowId: Long): MessageEntity?
+
+    /**
      * 按消息 ID 查询（送达回执、发送失败等只带消息 ID 的报文，会话由调用方确定不了时使用）。
      *
      * @param msgId 消息 ID

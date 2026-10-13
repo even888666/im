@@ -2,13 +2,16 @@ package cn.android666.im.data.settings
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import cn.android666.im.core.log.Logs
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 /**
- * 设备级设置（全局 DataStore）。目前只有隐私政策的同意状态，之后的设备级设置也放这里。
+ * 设备级设置（全局 DataStore）：隐私政策的同意状态、语音听筒播放；之后的设备级设置也放这里。
  *
  * @property dataStore 全局配置 DataStore
  */
@@ -36,8 +39,22 @@ class AppSettingsStore(private val dataStore: DataStore<Preferences>) {
         log.info("用户同意隐私政策，版本 {}", version)
     }
 
+    /** 语音消息是否用听筒播放（开发计划 5.5，默认扬声器） */
+    val voiceEarpiece: Flow<Boolean> = dataStore.data.map { it[KEY_VOICE_EARPIECE] ?: false }
+
+    /**
+     * 设置语音消息的播放方式。
+     *
+     * @param earpiece true 为听筒，false 为扬声器
+     */
+    suspend fun setVoiceEarpiece(earpiece: Boolean) {
+        dataStore.edit { it[KEY_VOICE_EARPIECE] = earpiece }
+        log.info("语音播放方式：{}", if (earpiece) "听筒" else "扬声器")
+    }
+
     private companion object {
         const val TAG = "AppSettings"
         val KEY_PRIVACY_VERSION = intPreferencesKey("privacy_agreed_version")
+        val KEY_VOICE_EARPIECE = booleanPreferencesKey("voice_earpiece")
     }
 }

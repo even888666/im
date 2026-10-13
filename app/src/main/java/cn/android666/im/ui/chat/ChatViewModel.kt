@@ -10,10 +10,16 @@ import androidx.paging.cachedIn
 import androidx.paging.insertSeparators
 import androidx.paging.map
 import cn.android666.im.R
+import cn.android666.im.core.common.Clock
+import cn.android666.im.core.common.SystemTimeClock
 import cn.android666.im.core.log.Logs
+import cn.android666.im.core.media.VoiceRecorder
 import cn.android666.im.core.media.MediaImporter
 import cn.android666.im.data.file.FileTooLargeException
 import cn.android666.im.data.message.MediaSender
+import cn.android666.im.data.message.VoiceError
+import cn.android666.im.data.message.VoicePlayback
+import cn.android666.im.data.settings.AppSettingsStore
 import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.conversation.toEntityType
@@ -45,6 +51,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 
 /** 聊天页的一次性事件 */
 sealed interface ChatEvent {
@@ -122,6 +129,11 @@ interface MergedTitleFormatter {
  * @property titleFormatter 合并转发标题的格式（字符串资源由界面提供）
  * @property media 媒体消息发送（开发计划 5.4）；null 时不能发图片，重发直接交给消息仓库
  * @property importer 把相册等返回的 Uri 复制到本地
+ * @param voiceRecorder 录音器（开发计划 5.5）；null 时不能发语音
+ * @param voiceDir 录音文件的目录
+ * @property voicePlayback 语音播放；null 时不能播放
+ * @property settings 设备级设置（听筒 / 扬声器）
+ * @param clock 时间来源（录音计时）
  */
 class ChatViewModel(
     val conversationId: String,
@@ -136,6 +148,11 @@ class ChatViewModel(
     private val titleFormatter: MergedTitleFormatter = MergedTitleFormatter.DEFAULT,
     private val media: MediaSender? = null,
     private val importer: MediaImporter? = null,
+    voiceRecorder: VoiceRecorder? = null,
+    voiceDir: File? = null,
+    private val voicePlayback: VoicePlayback? = null,
+    private val settings: AppSettingsStore? = null,
+    clock: Clock = SystemTimeClock,
 ) : ViewModel() {
 
     /** 聊天水印的文字："姓名 工号"（开发计划 4.18）；未登录时为 null */
@@ -340,6 +357,29 @@ class ChatViewModel(
     /** 一次性事件 */
     val events: Flow<ChatEvent> = eventChannel.receiveAsFlow()
 
+    /** "按住说话"的录音流程 */
+    private val recordController: VoiceRecordController? = if (voiceRecorder != null && voiceDir != null) {
+        VoiceRecordController(
+            recorder = voiceRecorder,
+            clock = clock,
+            scope = viewModelScope,
+            newFile = { File(voiceDir, "${UUID.randomUUID()}.m4a") },
+            onResult = ::onRecordResult,
+        )
+    } else {
+        null
+    }
+
+    /** 录音中的状态（界面显示录音浮层）；没在录音时为 null */
+    val recording: StateFlow<RecordState?> = recordController?.state ?: MutableStateFlow(null)
+
+    /** 正在播放的语音 rowId */
+    val playingVoice: StateFlow<Long?> = voicePlayback?.playing ?: MutableStateFlow(null)
+
+    /** 语音是否用听筒播放 */
+    val voiceEarpiece: StateFlow<Boolean> = (settings?.voiceEarpiece ?: flowOf(false))
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), false)
+
     init {
         // 撤回被服务器拒绝（超时、无权限）：提示
         viewModelScope.launch {
@@ -347,6 +387,87 @@ class ChatViewModel(
                 eventChannel.send(ChatEvent.Toast(if (code == "retract-forbidden") R.string.chat_retract_forbidden else R.string.chat_retract_too_late))
             }
         }
+        // 语音播放失败：提示
+        if (voicePlayback != null) {
+            viewModelScope.launch {
+                voicePlayback.errors.collect { error ->
+                    eventChannel.send(ChatEvent.Toast(if (error == VoiceError.EXPIRED) R.string.chat_voice_expired else R.string.chat_voice_play_failed))
+                }
+            }
+        }
+    }
+
+    /** 按下"按住说话"：停止正在播放的语音，开始录音 */
+    fun onVoicePress() {
+        voicePlayback?.stop()
+        recordController?.press()
+    }
+
+    /**
+     * 录音中手指移动。
+     *
+     * @param cancelZone 是否已上滑到取消区域
+     */
+    fun onVoiceMove(cancelZone: Boolean) {
+        recordController?.move(cancelZone)
+    }
+
+    /** 松开"按住说话" */
+    fun onVoiceRelease() {
+        recordController?.release()
+    }
+
+    /** 录音被中断（触摸取消） */
+    fun onVoiceAbort() {
+        recordController?.abort()
+    }
+
+    /**
+     * 录音结束：完成的发送，太短、失败时提示。
+     *
+     * @param result 结果
+     */
+    private suspend fun onRecordResult(result: RecordResult) {
+        when (result) {
+            is RecordResult.Finished -> {
+                val sender = media
+                if (sender == null) {
+                    result.file.delete()
+                    return
+                }
+                try {
+                    sender.sendVoice(conversationId, kind.toEntityType(), result.file, result.durationMillis)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.error("语音发送出错：会话={}", conversationId, e)
+                    result.file.delete()
+                    eventChannel.send(ChatEvent.Toast(R.string.chat_send_error))
+                }
+            }
+            RecordResult.TooShort -> eventChannel.send(ChatEvent.Toast(R.string.chat_voice_too_short))
+            RecordResult.Failed -> eventChannel.send(ChatEvent.Toast(R.string.chat_voice_failed))
+            RecordResult.Canceled -> Unit
+        }
+    }
+
+    /**
+     * 点击语音消息：播放 / 停止。
+     *
+     * @param rowId 消息 rowId
+     */
+    fun playVoice(rowId: Long) {
+        voicePlayback?.toggle(rowId)
+    }
+
+    /**
+     * 切换听筒 / 扬声器播放。
+     *
+     * @param earpiece true 为听筒
+     */
+    fun setVoiceEarpiece(earpiece: Boolean) {
+        val store = settings ?: return
+        viewModelScope.launch { store.setVoiceEarpiece(earpiece) }
     }
 
     /**
@@ -520,6 +641,9 @@ class ChatViewModel(
 
     /** 页面不可见 */
     fun onHidden() {
+        // 离开页面：取消录音、停止播放
+        recordController?.abort()
+        voicePlayback?.stop()
         if (kind == ConversationKind.SINGLE) chatStates?.onStopTyping(conversationId)
         if (messages.activeConversationId() == conversationId) messages.setActiveConversation(null)
     }
