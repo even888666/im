@@ -48,6 +48,10 @@ services:
       - openfire-conf:/opt/openfire/conf
       - openfire-logs:/opt/openfire/logs
       - openfire-upload:/var/lib/openfire/upload
+      # 自研插件（./gradlew -p server assemble 的输出），入口脚本启动时复制到 plugins 目录
+      - ../build/plugins:/opt/plugins-custom:ro
+      # 组织架构导入目录：把 .xlsx / .csv 放进 server/org-import/，10 秒内自动导入，结果在 done/ 中
+      - ../org-import:/opt/openfire/org-import
     # 1 万长连接需要调大文件句柄上限（功能清单 §18.2）；不能超过宿主机允许的上限（见 .env 中 OPENFIRE_NOFILE）
     ulimits:
       nofile:

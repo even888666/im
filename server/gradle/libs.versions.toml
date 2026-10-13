@@ -1,0 +1,22 @@
+# 服务端插件的依赖版本（server/ 是独立的 Gradle 构建，用 ./gradlew -p server 运行）。
+# 规则同 App（CLAUDE.md §4）：一律使用最新正式版，添加或升级前运行 `python3 -I scripts/dev/latest_versions.py` 查询确认。
+
+[versions]
+# 必须与 server/versions.env 中的 OPENFIRE_VERSION 一致：插件按该版本的 API 编译
+openfire = "5.1.2"
+pinyin4j = "2.5.1"
+# 只在测试中用于生成 Excel 文件。插件读取 Excel / CSV 不引入第三方库（见决策记录 A37）
+fastexcel = "0.20.2"
+# 测试
+junit = "4.13.2"
+truth = "1.4.5"
+h2 = "2.5.252"
+
+[libraries]
+openfire-xmppserver = { module = "org.igniterealtime.openfire:xmppserver", version.ref = "openfire" }
+pinyin4j = { module = "com.belerweb:pinyin4j", version.ref = "pinyin4j" }
+# 只在测试中用于生成 Excel 文件
+fastexcel-writer = { module = "org.dhatim:fastexcel", version.ref = "fastexcel" }
+junit = { module = "junit:junit", version.ref = "junit" }
+truth = { module = "com.google.truth:truth", version.ref = "truth" }
+h2 = { module = "com.h2database:h2", version.ref = "h2" }

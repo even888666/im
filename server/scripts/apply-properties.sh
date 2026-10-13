@@ -14,7 +14,11 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   [[ -z "${line// }" || "$line" =~ ^[[:space:]]*# ]] && continue
   key="${line%%=*}"
   value="${line#*=}"
-  value="${value//\$\{IM_DOMAIN\}/$IM_DOMAIN}"
+  # 把 ${变量名} 替换为 .env / versions.env 中的值（如 ${IM_DOMAIN}）
+  while [[ "$value" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
+    var="${BASH_REMATCH[1]}"
+    value="${value//\$\{$var\}/${!var:-}}"
+  done
   # SQL 字符串中的单引号转义
   key_sql="${key//\'/\'\'}"
   value_sql="${value//\'/\'\'}"

@@ -1,0 +1,21 @@
+工号,姓名,部门路径,职位,手机,座机,邮箱,初始密码
+10001,张三,总部/研发中心/Android组,Android工程师,13800010001,010-60000001,10001@example.com,@TEST_USER_PASSWORD@
+10002,李四,总部/研发中心/Android组,Android工程师,13800010002,,10002@example.com,@TEST_USER_PASSWORD@
+10003,王五,总部/研发中心/服务端组,服务端工程师,13800010003,,10003@example.com,@TEST_USER_PASSWORD@
+10004,赵六,总部/研发中心/服务端组,服务端工程师,13800010004,,10004@example.com,@TEST_USER_PASSWORD@
+10005,钱七,总部/研发中心/测试组,测试工程师,13800010005,,10005@example.com,@TEST_USER_PASSWORD@
+10006,孙八,总部/市场部,市场经理,13800010006,010-60000006,10006@example.com,@TEST_USER_PASSWORD@
+10007,周九,总部/市场部,市场专员,13800010007,,10007@example.com,@TEST_USER_PASSWORD@
+10008,吴十,总部/行政部,行政主管,13800010008,,10008@example.com,@TEST_USER_PASSWORD@
+10009,郑十一,总部/行政部,行政专员,13800010009,,10009@example.com,@TEST_USER_PASSWORD@
+10010,曾小明,总部/财务部,会计,13800010010,,10010@example.com,@TEST_USER_PASSWORD@
+10011,单丽,总部/研发中心/Android组,Android工程师,13800010011,,10011@example.com,@TEST_USER_PASSWORD@
+10012,欧阳娜娜,总部/研发中心/服务端组,架构师,13800010012,,10012@example.com,@TEST_USER_PASSWORD@
+10013,吕强,总部/研发中心/测试组,测试工程师,13800010013,,10013@example.com,@TEST_USER_PASSWORD@
+10014,John Smith,总部/研发中心/服务端组,顾问,13800010014,,10014@example.com,@TEST_USER_PASSWORD@
+10015,陈静,总部/市场部,市场专员,13800010015,,10015@example.com,@TEST_USER_PASSWORD@
+10016,刘洋,分公司/上海分公司/销售部,销售经理,13800010016,,10016@example.com,@TEST_USER_PASSWORD@
+10017,黄磊,分公司/上海分公司/销售部,销售,13800010017,,10017@example.com,@TEST_USER_PASSWORD@
+10018,杨帆,分公司/广州分公司,经理,13800010018,,10018@example.com,@TEST_USER_PASSWORD@
+10019,何静,分公司/广州分公司,行政,13800010019,,10019@example.com,@TEST_USER_PASSWORD@
+10020,买买提·艾力,总部/行政部,司机,13800010020,,10020@example.com,@TEST_USER_PASSWORD@

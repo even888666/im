@@ -2,6 +2,8 @@
 # 服务端脚本的公共函数，由 up.sh、down.sh 等 source 引入，不单独运行。
 
 SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# 仓库根目录（Gradle Wrapper 所在目录）
+REPO_DIR="$(cd "$SERVER_DIR/.." && pwd)"
 
 log() { echo "[$(basename "$0" .sh)] $*"; }
 
@@ -16,6 +18,10 @@ load_env() {
   source "$SERVER_DIR/versions.env"
   # shellcheck source=/dev/null
   source "$SERVER_DIR/.env"
+  # 导入的新账号首次登录是否强制改密：.env 中没有配置时，开发环境为 false（测试账号直接可用），生产环境为 true
+  if [[ -z "${ORG_IMPORT_MUST_CHANGE_PASSWORD:-}" ]]; then
+    if [[ "${IM_ENV:-prod}" == "dev" ]]; then ORG_IMPORT_MUST_CHANGE_PASSWORD=false; else ORG_IMPORT_MUST_CHANGE_PASSWORD=true; fi
+  fi
   set +a
 }
 

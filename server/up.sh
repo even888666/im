@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键启动 IM 服务端：证书 → 下载 → 构建 → 启动 → 等待就绪 → 写入系统属性。
+# 一键启动 IM 服务端：证书 → 下载 → 构建 → 启动 → 等待就绪 → 写入系统属性 → 部署自研插件 → 导入测试数据。
 # 可重复执行：已完成的步骤会跳过，用于首次部署、修改配置或升级版本后重新部署。
 #
 # 用法：bash server/up.sh
@@ -49,7 +49,9 @@ keystore_after="$(sha256sum "$keystore" | cut -d' ' -f1)"
 # 4. 下载安装包与插件
 bash "$SERVER_DIR/fetch.sh"
 
-# 5. 生成 coturn 配置，构建并启动
+# 5. 生成 coturn 配置，构建并启动。自研插件目录和导入目录会挂载到容器中，需先创建
+mkdir -p "$SERVER_DIR/build/plugins" "$SERVER_DIR/org-import"
+
 bash "$SERVER_DIR/scripts/render-coturn-conf.sh"
 log "构建并启动容器…"
 # 部署前 Openfire 是否已在运行：已运行的容器不会因为证书变化而被重新创建，需要手动重启
@@ -84,7 +86,11 @@ log "Openfire 已完成安装"
 bash "$SERVER_DIR/scripts/apply-properties.sh"
 bash "$SERVER_DIR/scripts/apply-external-services.sh"
 
-# 8. 开发环境：把域名指向本机，客户端和测试可以直接用域名访问（证书校验需要域名匹配）
+# 8. 自研插件（组织架构等），开发环境导入测试员工
+bash "$SERVER_DIR/scripts/deploy-plugins.sh"
+bash "$SERVER_DIR/scripts/import-testdata.sh"
+
+# 9. 开发环境：把域名指向本机，客户端和测试可以直接用域名访问（证书校验需要域名匹配）
 if [[ "$IM_ENV" == "dev" ]]; then
   hosts_line="127.0.0.1 $IM_DOMAIN conference.$IM_DOMAIN httpfileupload.$IM_DOMAIN turn.$IM_DOMAIN"
   if ! grep -qF "$hosts_line" /etc/hosts 2>/dev/null; then

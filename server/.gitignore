@@ -4,3 +4,9 @@
 docker/openfire/dist/
 # 生成的 coturn 配置（含共享密钥）
 docker/coturn/turnserver.conf
+# 服务端插件的构建输出与 Gradle 缓存
+build/
+.gradle/
+plugins/*/build/
+# 组织架构导入目录（导入结果中含初始密码）
+org-import/

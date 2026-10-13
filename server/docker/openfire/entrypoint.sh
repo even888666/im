@@ -2,7 +2,7 @@
 # Openfire 容器入口：
 #   1. 首次启动时用环境变量渲染 conf/openfire.xml（autosetup 自动安装）
 #   2. 每次启动时安装服务器证书（证书更新后重启容器即可生效）
-#   3. 每次启动时同步官方插件 jar
+#   3. 每次启动时同步官方插件和自研插件的 jar
 #   4. 前台运行 Openfire
 set -euo pipefail
 
@@ -54,8 +54,10 @@ else
   log "警告：未挂载 /certs/openfire-keystore.p12，Openfire 将使用自动生成的自签证书，客户端会拒绝连接"
 fi
 
-# 3. 插件：jar 内容变化时才复制（Openfire 检测到 jar 更新会重新解压）
-for jar in /opt/plugins-dist/*.jar; do
+# 3. 插件：官方插件（镜像内）和自研插件（挂载的 server/build/plugins）；jar 内容变化时才复制
+#    （Openfire 检测到 jar 更新会重新解压并重新加载插件）
+shopt -s nullglob
+for jar in /opt/plugins-dist/*.jar /opt/plugins-custom/*.jar; do
   target="$OPENFIRE_HOME/plugins/$(basename "$jar")"
   if ! cmp -s "$jar" "$target"; then
     cp "$jar" "$target"

@@ -246,9 +246,10 @@ class SmackXmppClient(
 
     override suspend fun <T> sendIq(request: IqRequest<T>): T = request("IQ ${request.namespace}#${request.elementName}") { current ->
         val iq = RawIq(request).apply { to = JidCreate.from(request.to ?: serverConfig.domain) }
+        // 先注册结果解析器，保证结果中嵌套元素的命名空间不丢失
+        RawResultIqProvider.registerFor(request)
         val response: IQ = current.sendIqRequestAndWaitForResponse(iq)
-        // 自定义命名空间没有注册解析器，Smack 返回 UnparsedIQ；空结果没有子元素
-        val child = response.childElementName?.let { response.childElementXML.toString() }
+        val child = resultChildXml(response)
         val node = try {
             child?.let { XmlNode.parse(it) }
         } catch (e: IllegalArgumentException) {

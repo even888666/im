@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    组织架构插件（org）的描述文件。@VERSION@ 由构建脚本替换为插件版本。
+    协议见《三端协议规范.md》§3 ~ §5，开发计划 M3。
+-->
+<plugin>
+    <class>cn.android666.im.server.org.OrgPlugin</class>
+    <name>IM 组织架构</name>
+    <description>账号状态、组织架构查询与同步、同事搜索、在线状态查询、Excel 导入与后台维护</description>
+    <author>android666</author>
+    <version>@VERSION@</version>
+    <date>2026-10-13</date>
+    <minServerVersion>5.0.0</minServerVersion>
+    <!-- 建表脚本：database/org_{数据库类型}.sql；升级表结构时 databaseVersion 加 1 并提供 database/upgrade/{版本}/ 脚本 -->
+    <databaseKey>org</databaseKey>
+    <databaseVersion>1</databaseVersion>
+    <!-- 管理后台的表单提交需要校验 csrf 参数（PluginServlet 自动校验） -->
+    <csrfProtectionEnabled>true</csrfProtectionEnabled>
+
+    <adminconsole>
+        <tab id="tab-users">
+            <sidebar id="sidebar-org" name="组织架构">
+                <item id="org-import" name="Excel 导入" url="org-import.jsp"
+                      description="从 Excel / CSV 导入员工和部门"/>
+                <item id="org-departments" name="部门管理" url="org-departments.jsp"
+                      description="新增、修改、删除部门"/>
+                <item id="org-employees" name="员工管理" url="org-employees.jsp"
+                      description="编辑员工信息、调岗、禁用 / 启用账号"/>
+            </sidebar>
+        </tab>
+    </adminconsole>
+</plugin>

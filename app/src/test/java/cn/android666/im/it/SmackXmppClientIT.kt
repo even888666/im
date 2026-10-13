@@ -104,8 +104,11 @@ class SmackXmppClientIT {
         assertThat(caps.carbons).isTrue()
         assertThat(caps.externalServices).isTrue()
         assertThat(caps.maxUploadFileSize).isEqualTo(104_857_600L)
-        // 自研插件尚未开发（开发计划 M3），对应功能不可用
-        assertThat(caps.org).isFalse()
+        // 组织架构插件（开发计划 M3）提供的功能；biz 插件（群聊扩展、诊断上报）尚未开发
+        assertThat(caps.account).isTrue()
+        assertThat(caps.org).isTrue()
+        assertThat(caps.presenceQuery).isTrue()
+        assertThat(caps.mucExtension).isFalse()
     }
 
     /** 2.11：通过自定义 IQ 修改密码（XEP-0077），之后用新密码登录，再改回原密码 */
@@ -129,18 +132,17 @@ class SmackXmppClientIT {
     }
 
     /**
-     * 2.10：查询账号状态。组织架构插件尚未开发（开发计划 M3），Openfire 不认识该命名空间，
-     * 返回 stanza error，映射为 XmppException.StanzaError。插件完成后改为验证 mustChangePassword。
+     * 2.10：查询账号状态（组织架构插件，协议规范 §3.1）。开发环境的测试账号不需要强制改密。
+     * （插件开发前 Openfire 不认识该命名空间、返回 stanza error 的情况由 SessionManager 的单元测试覆盖。）
      */
     @Test
-    fun accountStatus_withoutOrgPlugin_stanzaError() = runBlocking {
+    fun accountStatus_viaOrgPlugin() = runBlocking {
         val client = newClient()
         client.login(credential())
 
-        val e = runCatching { client.sendIq(AccountStatusRequest()) }.exceptionOrNull()
+        val status = client.sendIq(AccountStatusRequest())
 
-        assertThat(e).isInstanceOf(XmppException.StanzaError::class.java)
-        assertThat((e as XmppException.StanzaError).condition).isAnyOf("service-unavailable", "feature-not-implemented")
+        assertThat(status.mustChangePassword).isFalse()
     }
 
     /** 2.16：前后台切换（CSI）后连接保持正常，仍能收发 IQ */

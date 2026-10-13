@@ -6,7 +6,7 @@
 maven-metadata.xml，列出每个依赖的当前版本与最新正式版，并标出需要升级的项。
 
 用法：
-    python3 -I scripts/dev/latest_versions.py                 # 检查 libs.versions.toml
+    python3 -I scripts/dev/latest_versions.py                 # 检查 App 与服务端的 libs.versions.toml
     python3 -I scripts/dev/latest_versions.py group:artifact  # 查询任意坐标的最新正式版
 """
 
@@ -23,6 +23,8 @@ REPOS = [
     "https://repo1.maven.org/maven2",
     "https://maven-central.storage-download.googleapis.com/maven2",
     "https://plugins.gradle.org/m2",
+    # Openfire 服务端依赖（xmppserver 等，服务端插件构建用）
+    "https://igniterealtime.org/archiva/repository/maven",
 ]
 
 # 预发布版本的特征：alpha、beta、rc、dev、SNAPSHOT、M1 这类里程碑、eap、preview 等
@@ -108,7 +110,11 @@ def main() -> None:
             print(f"{coord}: {latest_release(coord)}")
         return
     root = Path(__file__).resolve().parents[2]
-    check_catalog(root / "gradle" / "libs.versions.toml")
+    # App 与服务端插件（server/ 独立构建）各有一份版本目录
+    for catalog in (root / "gradle" / "libs.versions.toml", root / "server" / "gradle" / "libs.versions.toml"):
+        if catalog.exists():
+            print(f"== {catalog.relative_to(root)}")
+            check_catalog(catalog)
 
 
 if __name__ == "__main__":

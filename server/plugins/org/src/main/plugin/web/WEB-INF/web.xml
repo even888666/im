@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    管理后台页面：PluginServlet 按 url-pattern 把 /plugins/org/{路径} 转给对应的 Servlet。
+    页面不用 JSP（插件构建无需 JSP 预编译），由 Servlet 直接输出 HTML。路径仍以 .jsp 结尾：
+    管理后台只对 *.jsp 的地址套用统一的页面框架（菜单、标题栏），见 Openfire 的 decorators.xml。
+-->
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="4.0">
+    <servlet>
+        <servlet-name>OrgImportServlet</servlet-name>
+        <servlet-class>cn.android666.im.server.org.admin.ImportServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>OrgImportServlet</servlet-name>
+        <url-pattern>/org-import.jsp</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>OrgDepartmentServlet</servlet-name>
+        <servlet-class>cn.android666.im.server.org.admin.DepartmentServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>OrgDepartmentServlet</servlet-name>
+        <url-pattern>/org-departments.jsp</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>OrgEmployeeServlet</servlet-name>
+        <servlet-class>cn.android666.im.server.org.admin.EmployeeServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>OrgEmployeeServlet</servlet-name>
+        <url-pattern>/org-employees.jsp</url-pattern>
+    </servlet-mapping>
+</web-app>

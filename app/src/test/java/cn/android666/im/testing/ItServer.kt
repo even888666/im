@@ -18,7 +18,8 @@ import javax.net.ssl.X509TrustManager
  *
  * - 域名、测试账号密码从 `server/.env` 读取（目录由 Gradle 通过系统属性 `im.it.serverDir` 传入）；
  * - TLS 只信任 `server/certs/out/ca.crt`（开发环境根证书），并按域名校验主机名，与 App 的要求一致；
- * - 开发环境测试账号为 10001 ~ 10010（见 server/docker/openfire/entrypoint.sh）。
+ * - 开发环境测试账号为 10001 ~ 10020：10001 ~ 10010 由 Openfire 安装时创建（server/docker/openfire/entrypoint.sh），
+ *   10011 ~ 10020 由组织架构插件从 server/testdata/employees.csv 导入，密码相同。
  */
 object ItServer {
 
@@ -49,6 +50,9 @@ object ItServer {
     /** 测试账号的密码 */
     val testUserPassword: String by lazy { env["TEST_USER_PASSWORD"] ?: error(".env 中缺少 TEST_USER_PASSWORD") }
 
+    /** 管理后台 admin 账号的密码 */
+    val adminPassword: String by lazy { env["OPENFIRE_ADMIN_PASSWORD"] ?: error(".env 中缺少 OPENFIRE_ADMIN_PASSWORD") }
+
     /** 只信任开发根证书的 TrustManager */
     val trustManager: X509TrustManager by lazy {
         val caFile = File(serverDir, "certs/out/ca.crt")
@@ -71,11 +75,11 @@ object ItServer {
     /**
      * 测试账号的工号。
      *
-     * @param index 1 ~ 10
+     * @param index 1 ~ 20
      * @return 工号，例如 index = 1 时为 10001
      */
     fun user(index: Int): String {
-        require(index in 1..10) { "测试账号只有 10001 ~ 10010" }
+        require(index in 1..20) { "测试账号只有 10001 ~ 10020" }
         return (10_000 + index).toString()
     }
 
