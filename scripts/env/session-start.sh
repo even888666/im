@@ -27,13 +27,27 @@ log "已安装 Gradle Maven Central 镜像初始化脚本"
 bash "$PROJECT_DIR/server/certs/gen-ca.sh"
 
 # 3. Docker 守护进程：容器里没有 systemd 托管，未运行时手动在后台拉起
-if ! docker info >/dev/null 2>&1; then
-  log "启动 Docker 守护进程…"
+# 启动 dockerd 并等待就绪；会话恢复后可能残留上次的 pid 文件，导致 containerd 启动超时，启动前先清理
+start_dockerd() {
+  if ! pgrep -x dockerd >/dev/null; then
+    rm -f /var/run/docker.pid /var/run/docker/containerd/containerd.pid
+  fi
   nohup dockerd >/var/log/dockerd.log 2>&1 &
-  for _ in $(seq 1 30); do
-    docker info >/dev/null 2>&1 && break
+  for _ in $(seq 1 40); do
+    docker info >/dev/null 2>&1 && return 0
     sleep 1
   done
+  return 1
+}
+if ! docker info >/dev/null 2>&1; then
+  log "启动 Docker 守护进程…"
+  if ! start_dockerd; then
+    log "第一次启动失败，清理后重试…"
+    pkill -x dockerd 2>/dev/null || true
+    pkill -x containerd 2>/dev/null || true
+    sleep 2
+    start_dockerd || true
+  fi
 fi
 if docker info >/dev/null 2>&1; then
   log "Docker 守护进程已就绪"
