@@ -2,6 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- 连接 XMPP 服务器、文件上传下载、官网版本 API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 监听网络变化，断网 / 恢复 / 切换网络时及时重连（core.network.AndroidNetworkMonitor） -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:name=".App"
         android:allowBackup="true"
