@@ -1,6 +1,12 @@
 package cn.android666.im.di
 
 import android.content.Context
+import cn.android666.im.BuildConfig
+import cn.android666.im.core.security.RootCaTrust
+import cn.android666.im.core.xmpp.ServerConfig
+import cn.android666.im.core.xmpp.XmppClient
+import cn.android666.im.core.xmpp.smack.SmackXmppClient
+import org.jivesoftware.smack.android.AndroidSmackInitializer
 import cn.android666.im.core.common.Clock
 import cn.android666.im.core.common.DefaultDispatcherProvider
 import cn.android666.im.core.common.DispatcherProvider
@@ -45,6 +51,30 @@ class AppContainer(context: Context) {
 
     /** 协议 ID 生成器 */
     val idGenerator: IdGenerator = UuidIdGenerator()
+
+    /** 只信任企业根证书的 TLS 配置，XMPP 与 HTTP 共用 */
+    val rootCaTrust: RootCaTrust by lazy { RootCaTrust.fromResources(appContext) }
+
+    /** XMPP 服务器地址 */
+    val serverConfig: ServerConfig = ServerConfig(
+        domain = BuildConfig.IM_DOMAIN,
+        host = BuildConfig.IM_HOST.ifBlank { null },
+    )
+
+    /**
+     * XMPP 客户端。Debug 版记录报文日志，Release 版默认关闭（开发计划 8.10 提供运行时开关）。
+     * 在 Android 上使用 Smack 前必须先完成其 Android 初始化（DNS 解析等）。
+     */
+    val xmppClient: XmppClient by lazy {
+        AndroidSmackInitializer.initialize(appContext)
+        SmackXmppClient(
+            serverConfig = serverConfig,
+            trustManager = rootCaTrust.trustManager,
+            dispatchers = dispatchers,
+            clock = clock,
+            logStanzas = { BuildConfig.DEBUG },
+        )
+    }
 
     /** 日志文件名前缀管理：登录成功后切换为工号 */
     val logFilePrefixManager: LogFilePrefixManager by lazy {

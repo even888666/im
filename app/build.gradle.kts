@@ -91,6 +91,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 服务器地址（多环境切换见开发计划，P1）：用 -Pim.domain=... -Pim.host=... 指定，
+        // 默认连接开发环境域名；im.host 为空时直接连接域名（由 DNS 解析）
+        buildConfigField("String", "IM_DOMAIN", "\"${providers.gradleProperty("im.domain").getOrElse("im.example.com")}\"")
+        buildConfigField("String", "IM_HOST", "\"${providers.gradleProperty("im.host").getOrElse("")}\"")
     }
 
     buildTypes {
