@@ -13,6 +13,7 @@ import cn.android666.im.data.account.CredentialStore
 import cn.android666.im.data.avatar.AvatarRepository
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
+import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.SendQueue
@@ -181,6 +182,9 @@ class AppContainer(context: Context) {
     val messageRepository: MessageRepository by lazy {
         MessageRepository(userDatabaseHolder, sendQueue, serverClock, idGenerator, selfJid)
     }
+
+    /** 会话列表：查询、删除、未读数 */
+    val conversationRepository: ConversationRepository by lazy { ConversationRepository(userDatabaseHolder) }
 
     /** 收到的消息的分发：去重写库、回执 */
     val incomingMessageHandler: IncomingMessageHandler by lazy {

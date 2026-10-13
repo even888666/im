@@ -49,7 +49,8 @@ class KeepAliveWorkerTest {
 
         val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(KeepAliveWorker.WORK_NAME).get()
         assertThat(infos).hasSize(1)
-        assertThat(infos.single().state).isEqualTo(WorkInfo.State.ENQUEUED)
+        // 测试 WorkManager 使用同步执行器，全量运行时任务偶尔在断言前已经开始执行，两种状态都表示"已安排"
+        assertThat(infos.single().state).isAnyOf(WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING)
         assertThat(infos.single().periodicityInfo!!.repeatIntervalMillis).isEqualTo(15 * 60 * 1000L)
     }
 

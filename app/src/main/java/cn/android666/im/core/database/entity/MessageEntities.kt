@@ -1,5 +1,6 @@
 package cn.android666.im.core.database.entity
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -130,6 +131,22 @@ data class ConversationEntity(
         const val TYPE_SELF = 3
     }
 }
+
+/**
+ * 会话列表项：会话 + 对方的员工信息（左连接员工表，群聊、文件传输助手、已离职的为 null）+ 最后一条消息的方向与状态
+ * （发送中 / 失败时在预览前显示图标）。
+ *
+ * @property conversation 会话
+ * @property employee 对方的员工信息
+ * @property lastMsgDirection 最后一条消息的方向；没有消息时为 null
+ * @property lastMsgStatus 最后一条消息的状态；没有消息时为 null
+ */
+data class ConversationWithPeer(
+    @Embedded val conversation: ConversationEntity,
+    @Embedded(prefix = "e_") val employee: EmployeeEntity?,
+    val lastMsgDirection: Int?,
+    val lastMsgStatus: Int?,
+)
 
 /**
  * 附件的本地状态（Android工程架构.md §5.2，M5 媒体消息使用）。

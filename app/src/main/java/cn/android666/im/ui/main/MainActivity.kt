@@ -13,6 +13,7 @@ import cn.android666.im.databinding.ActivityMainBinding
 import cn.android666.im.di.AppContainer
 import cn.android666.im.ui.base.MessageDialogFragment
 import cn.android666.im.ui.contacts.ContactsFragment
+import cn.android666.im.ui.conversation.ConversationListFragment
 import cn.android666.im.ui.base.appViewModels
 import cn.android666.im.ui.base.applySystemBarsPadding
 import cn.android666.im.ui.base.collectWhenStarted
@@ -74,6 +75,14 @@ class MainActivity : AppCompatActivity() {
             text?.let(binding.bannerText::setText)
         }
         collectWhenStarted(viewModel.events, ::onEvent)
+        // "消息" Tab 的总未读数角标（功能清单 §10）
+        collectWhenStarted(viewModel.totalUnread) { count ->
+            if (count > 0) {
+                binding.bottomNav.getOrCreateBadge(R.id.tab_messages).number = count
+            } else {
+                binding.bottomNav.removeBadge(R.id.tab_messages)
+            }
+        }
     }
 
     /**
@@ -125,7 +134,7 @@ class MainActivity : AppCompatActivity() {
      * @return Tab 页面
      */
     private fun createTab(@IdRes itemId: Int): Fragment = when (itemId) {
-        R.id.tab_messages -> PlaceholderFragment.newInstance(R.string.messages_empty)
+        R.id.tab_messages -> ConversationListFragment()
         R.id.tab_contacts -> ContactsFragment()
         R.id.tab_me -> MeFragment()
         else -> error("未知的 Tab：$itemId")
@@ -159,6 +168,7 @@ class MainActivity : AppCompatActivity() {
             sessionManager = container.sessionManager,
             connectionState = container.xmppClient.connectionState,
             networkStatus = container.networkMonitor.status,
+            totalUnread = container.conversationRepository.observeTotalUnread(),
         )
     }
 }

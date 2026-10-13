@@ -96,6 +96,30 @@
     <string name="tab_me">我</string>
     <string name="messages_empty">暂无消息</string>
 
+    <!-- 会话列表（开发计划 4.7） -->
+    <string name="conversation_self">文件传输助手</string>
+    <string name="conversation_notice">公司公告</string>
+    <string name="conversation_prefix_mention">[有人@我]</string>
+    <string name="conversation_prefix_draft">[草稿]</string>
+    <string name="conversation_muted">免打扰</string>
+    <string name="conversation_yesterday">昨天</string>
+    <string name="conversation_time_today">%1$02d:%2$02d</string>
+    <string name="conversation_time_this_year">%1$d月%2$d日</string>
+    <string name="conversation_time_older">%1$d/%2$d/%3$d</string>
+    <string name="conversation_action_delete">删除会话</string>
+    <string name="conversation_action_mark_read">标为已读</string>
+    <string name="conversation_delete_confirm">删除后，将清空该会话的本地聊天记录</string>
+    <string name="conversation_delete">删除</string>
+    <string-array name="conversation_weekdays">
+        <item>星期一</item>
+        <item>星期二</item>
+        <item>星期三</item>
+        <item>星期四</item>
+        <item>星期五</item>
+        <item>星期六</item>
+        <item>星期日</item>
+    </string-array>
+
     <!-- 我 -->
     <string name="me_emp_no">工号：%1$s</string>
     <string name="me_logout">退出登录</string>

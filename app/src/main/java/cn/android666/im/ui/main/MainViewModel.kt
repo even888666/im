@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -40,12 +41,17 @@ sealed interface MainEvent {
  * @property sessionManager 登录编排
  * @param connectionState 连接状态
  * @param networkStatus 网络状态
+ * @param totalUnread 总未读数（"消息" Tab 角标）
  */
 class MainViewModel(
     private val sessionManager: SessionManager,
     connectionState: StateFlow<ConnectionState>,
     networkStatus: StateFlow<NetworkStatus>,
+    totalUnread: Flow<Int> = flowOf(0),
 ) : ViewModel() {
+
+    /** 总未读数（"消息" Tab 角标），0 时不显示 */
+    val totalUnread: StateFlow<Int> = totalUnread.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), 0)
 
     /** 顶部连接状态条的文字；null 表示已连接、不显示 */
     @get:StringRes
@@ -91,5 +97,10 @@ class MainViewModel(
         is SessionState.MustChangePassword -> username
         is SessionState.Ended -> username
         SessionState.LoggedOut -> null
+    }
+
+    private companion object {
+        /** 页面不可见超过该时间后停止查询未读数 */
+        const val STOP_TIMEOUT_MILLIS = 5_000L
     }
 }

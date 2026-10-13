@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
 import cn.android666.im.core.database.entity.ConversationEntity
+import cn.android666.im.core.database.entity.ConversationWithPeer
 import kotlinx.coroutines.flow.Flow
 
 /** 会话表的访问 */
@@ -46,6 +47,27 @@ interface ConversationDao {
             "ORDER BY pinned DESC, pinnedAt DESC, lastMsgTime DESC",
     )
     fun observeAll(): Flow<List<ConversationEntity>>
+
+    /**
+     * 会话列表（排序与 [observeAll] 相同），附带对方的员工信息和最后一条消息的状态。
+     *
+     * @return 持续更新的会话列表
+     */
+    @Query(
+        """
+        SELECT c.*,
+               e.jid AS e_jid, e.empNo AS e_empNo, e.name AS e_name, e.pinyin AS e_pinyin, e.initials AS e_initials,
+               e.deptId AS e_deptId, e.title AS e_title, e.mobile AS e_mobile, e.phone AS e_phone, e.email AS e_email,
+               e.sort AS e_sort, e.avatarHash AS e_avatarHash,
+               m.direction AS lastMsgDirection, m.status AS lastMsgStatus
+        FROM conversation AS c
+        LEFT JOIN employee AS e ON e.jid = c.id
+        LEFT JOIN message AS m ON m.rowId = c.lastMsgRowId
+        WHERE c.lastMsgRowId IS NOT NULL OR c.draft != '' OR c.pinned = 1
+        ORDER BY c.pinned DESC, c.pinnedAt DESC, c.lastMsgTime DESC
+        """,
+    )
+    fun observeListWithPeer(): Flow<List<ConversationWithPeer>>
 
     /**
      * 总未读数（底部"消息" Tab 的角标），免打扰的会话不计入。

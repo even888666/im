@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 会话列表项（开发计划 4.7）：头像（右上角未读角标）、名称、时间、发送状态图标 + 预览、免打扰图标。
+     列表项的背景只是点击水波纹 / 置顶底色，Lint 的 Overdraw 是误报 -->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="72dp"
+    android:background="?attr/selectableItemBackground"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    tools:ignore="Overdraw">
+
+    <cn.android666.im.ui.widget.AvatarView
+        android:id="@+id/avatar"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        app:avatarTextSize="16sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- 未读数角标（免打扰时改为小红点 unreadDot） -->
+    <TextView
+        android:id="@+id/unreadBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="18dp"
+        android:layout_marginTop="-6dp"
+        android:layout_marginEnd="-6dp"
+        android:background="@drawable/bg_unread_badge"
+        android:gravity="center"
+        android:minWidth="18dp"
+        android:paddingStart="5dp"
+        android:paddingEnd="5dp"
+        android:textColor="?attr/colorOnError"
+        android:textSize="11sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@id/avatar"
+        app:layout_constraintTop_toTopOf="@id/avatar"
+        tools:text="3"
+        tools:visibility="visible" />
+
+    <View
+        android:id="@+id/unreadDot"
+        android:layout_width="10dp"
+        android:layout_height="10dp"
+        android:layout_marginTop="-3dp"
+        android:layout_marginEnd="-3dp"
+        android:background="@drawable/bg_unread_dot"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@id/avatar"
+        app:layout_constraintTop_toTopOf="@id/avatar" />
+
+    <TextView
+        android:id="@+id/name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="8dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textAppearance="?attr/textAppearanceBodyLarge"
+        app:layout_constraintBottom_toTopOf="@id/preview"
+        app:layout_constraintEnd_toStartOf="@id/time"
+        app:layout_constraintStart_toEndOf="@id/avatar"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_chainStyle="packed"
+        tools:text="张三" />
+
+    <TextView
+        android:id="@+id/time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?android:attr/textColorSecondary"
+        app:layout_constraintBaseline_toBaselineOf="@id/name"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="10:24" />
+
+    <ImageView
+        android:id="@+id/stateIcon"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginEnd="4dp"
+        android:importantForAccessibility="no"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/preview"
+        app:layout_constraintStart_toStartOf="@id/name"
+        app:layout_constraintTop_toTopOf="@id/preview"
+        tools:src="@drawable/ic_msg_failed"
+        tools:visibility="visible" />
+
+    <TextView
+        android:id="@+id/preview"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="8dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="?android:attr/textColorSecondary"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/mutedIcon"
+        app:layout_constraintStart_toEndOf="@id/stateIcon"
+        app:layout_constraintTop_toBottomOf="@id/name"
+        app:layout_goneMarginStart="0dp"
+        tools:text="[有人@我] 下午开会" />
+
+    <ImageView
+        android:id="@+id/mutedIcon"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:contentDescription="@string/conversation_muted"
+        android:src="@drawable/ic_muted"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/preview"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/preview"
+        tools:visibility="visible" />
+</androidx.constraintlayout.widget.ConstraintLayout>

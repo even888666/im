@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 未读角标背景：红色圆角（数字较长时拉伸为胶囊形） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="?attr/colorError" />
+    <corners android:radius="9dp" />
+</shape>

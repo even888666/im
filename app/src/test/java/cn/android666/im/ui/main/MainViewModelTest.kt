@@ -102,4 +102,18 @@ class MainViewModelTest {
         assertThat(rig.client.calls.last()).isEqualTo("logout")
         assertThat(rig.credentialStore.load()!!.password).isNull()
     }
+
+    /** "消息" Tab 角标：有订阅者时跟随总未读数 */
+    @Test
+    fun totalUnread_followsRepository() = runTest(mainDispatcherRule.testDispatcher) {
+        val rig = loggedIn()
+        val unread = kotlinx.coroutines.flow.MutableStateFlow(0)
+        val vm = MainViewModel(rig.sessionManager, rig.client.connectionState, rig.network.status, unread)
+
+        vm.totalUnread.test {
+            assertThat(awaitItem()).isEqualTo(0)
+            unread.value = 7
+            assertThat(awaitItem()).isEqualTo(7)
+        }
+    }
 }
