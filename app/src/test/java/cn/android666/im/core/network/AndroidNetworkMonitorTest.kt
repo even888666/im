@@ -27,9 +27,23 @@ class AndroidNetworkMonitorTest {
         connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     }
 
-    /** 注册到 ConnectivityManager 的回调（AndroidNetworkMonitor 只注册一个） */
-    private fun callback(): ConnectivityManager.NetworkCallback =
-        shadowOf(connectivityManager).networkCallbacks.single()
+    /** 被测监听器注册的回调（App 启动时也会创建一个监听器并注册回调，需排除） */
+    private lateinit var callback: ConnectivityManager.NetworkCallback
+
+    /**
+     * 创建被测监听器，并找出它新注册的回调。
+     *
+     * @return 监听器
+     */
+    private fun newMonitor(): AndroidNetworkMonitor {
+        val before = shadowOf(connectivityManager).networkCallbacks.toSet()
+        val monitor = AndroidNetworkMonitor(context)
+        callback = (shadowOf(connectivityManager).networkCallbacks - before).single()
+        return monitor
+    }
+
+    /** 被测监听器的回调 */
+    private fun callback(): ConnectivityManager.NetworkCallback = callback
 
     /**
      * 构造一个带 INTERNET 能力的网络能力对象。
@@ -43,7 +57,7 @@ class AndroidNetworkMonitorTest {
 
     @Test
     fun onAvailable_thenOnLost_updatesStatus() {
-        val monitor = AndroidNetworkMonitor(context)
+        val monitor = newMonitor()
         val wifi: Network = ShadowNetwork.newInstance(100)
 
         callback().onAvailable(wifi)
@@ -56,7 +70,7 @@ class AndroidNetworkMonitorTest {
     /** 切换网络时：先收到新网络可用、再收到旧网络丢失，状态应保持为新网络 */
     @Test
     fun switchNetwork_lostOfOldNetworkIgnored() {
-        val monitor = AndroidNetworkMonitor(context)
+        val monitor = newMonitor()
         val wifi: Network = ShadowNetwork.newInstance(100)
         val mobile: Network = ShadowNetwork.newInstance(200)
 
@@ -70,7 +84,7 @@ class AndroidNetworkMonitorTest {
     /** 网络失去 INTERNET 能力时视为不可用，恢复后重新可用 */
     @Test
     fun capabilitiesChanged_updatesAvailability() {
-        val monitor = AndroidNetworkMonitor(context)
+        val monitor = newMonitor()
         val wifi: Network = ShadowNetwork.newInstance(100)
         callback().onAvailable(wifi)
 

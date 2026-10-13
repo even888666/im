@@ -5,7 +5,10 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import cn.android666.im.core.log.Logs
+import cn.android666.im.data.session.SessionState
 import cn.android666.im.di.AppContainer
+import cn.android666.im.service.ImService
+import kotlinx.coroutines.launch
 
 /**
  * 应用入口。只负责创建 [AppContainer]，其余初始化放在各组件中按需进行。
@@ -23,6 +26,7 @@ class App : Application() {
         super.onCreate()
         container = AppContainer(this)
         observeAppVisibility()
+        bindServiceToSession()
         Logs.file(TAG).info(
             "应用启动：versionName={}，versionCode={}，debug={}",
             BuildConfig.VERSION_NAME,
@@ -41,6 +45,37 @@ class App : Application() {
 
             override fun onStop(owner: LifecycleOwner) = container.appVisibilityHandler.onBackground()
         })
+    }
+
+    /**
+     * 前台服务随会话启停：登录中、已登录、强制改密时保持运行（承载长连接）；未登录、会话结束时停止。
+     * 数据层不能依赖 service 层（Android工程架构.md §3.3），所以由 App 负责二者的联动。
+     */
+    private fun bindServiceToSession() {
+        container.applicationScope.launch {
+            container.sessionManager.state.collect { state ->
+                when (state) {
+                    is SessionState.Starting, is SessionState.Ready, is SessionState.MustChangePassword ->
+                        if (!ImService.isRunning) startServiceSafely(state)
+                    SessionState.LoggedOut, is SessionState.Ended ->
+                        if (ImService.isRunning) ImService.stop(this@App)
+                }
+            }
+        }
+    }
+
+    /**
+     * 启动前台服务。Android 12+ 在后台启动前台服务受限，抛出异常时只记录日志：
+     * 服务被系统重建（START_STICKY）或保活巡检会再次尝试。
+     *
+     * @param state 触发启动的会话状态，写日志用
+     */
+    private fun startServiceSafely(state: SessionState) {
+        try {
+            ImService.start(this, "会话状态 ${state::class.simpleName}")
+        } catch (e: IllegalStateException) {
+            Logs.file(TAG).warn("无法启动前台服务（应用在后台受系统限制）", e)
+        }
     }
 
     private companion object {

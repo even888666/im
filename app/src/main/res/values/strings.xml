@@ -1,3 +1,20 @@
 <resources>
     <string name="app_name">im</string>
+
+    <!-- 通知渠道（显示在系统设置的应用通知中） -->
+    <string name="channel_service_name">后台连接</string>
+    <string name="channel_service_description">保持与服务器的连接，以便及时收到消息和来电</string>
+    <string name="channel_message_name">新消息</string>
+    <string name="channel_message_description">单聊、群聊和公司公告的新消息提醒</string>
+    <string name="channel_call_name">音视频来电</string>
+    <string name="channel_call_description">语音和视频通话的来电提醒</string>
+
+    <!-- 前台服务常驻通知中的连接状态 -->
+    <string name="service_status_connected">已连接，可以正常收发消息</string>
+    <string name="service_status_connecting">正在连接服务器…</string>
+    <string name="service_status_idle">未登录</string>
+    <string name="service_status_disconnected">与服务器的连接已断开，正在等待重连</string>
+    <string name="service_status_conflict">你的账号已在其他设备登录</string>
+    <string name="service_status_disabled">账号已被禁用</string>
+    <string name="service_status_auth_failed">登录已失效，请重新登录</string>
 </resources>
