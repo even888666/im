@@ -4,6 +4,8 @@ import cn.android666.im.core.xmpp.ConnectionState
 import cn.android666.im.core.xmpp.Credential
 import cn.android666.im.core.xmpp.DisconnectReason
 import cn.android666.im.core.xmpp.LoginResult
+import cn.android666.im.core.xmpp.ServerCapabilities
+import cn.android666.im.core.xmpp.ServerTime
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +46,40 @@ class FakeXmppClient : XmppClient {
         calls += "reconnect"
         if (lastCredential == null) throw XmppException.NotConnected()
         return complete(reconnectResults.removeFirstOrNull() ?: LoginResult(resumed = true))
+    }
+
+    /** [discoverCapabilities] 返回的能力，默认支持协议规范 §1.7 的全部 feature、上传上限 100 MB */
+    var capabilities = ServerCapabilities(ServerCapabilities.EXPECTED.toSet(), maxUploadFileSize = 104_857_600L)
+
+    /** [queryServerTime] 返回的结果 */
+    var serverTime = ServerTime(serverMillis = 1_000_000L, requestSentAtMillis = 1_000_000L, roundTripMillis = 0L)
+
+    /** 下一次 [enableCarbons] / [queryServerTime] / [discoverCapabilities] 调用要抛出的异常（只生效一次） */
+    var nextRequestError: XmppException? = null
+
+    override suspend fun enableCarbons() {
+        calls += "enableCarbons"
+        throwPendingError()
+    }
+
+    override suspend fun queryServerTime(): ServerTime {
+        calls += "queryServerTime"
+        throwPendingError()
+        return serverTime
+    }
+
+    override suspend fun discoverCapabilities(): ServerCapabilities {
+        calls += "discoverCapabilities"
+        throwPendingError()
+        return capabilities
+    }
+
+    /** 抛出并清除预设的请求错误 */
+    private fun throwPendingError() {
+        nextRequestError?.let {
+            nextRequestError = null
+            throw it
+        }
     }
 
     /** 依次用于每次 [checkAlive] 的结果，未预设时返回 true；返回 false 时模拟连接失效并断开 */

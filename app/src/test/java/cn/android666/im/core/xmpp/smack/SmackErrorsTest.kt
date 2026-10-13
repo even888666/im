@@ -136,6 +136,69 @@ class SmackErrorsTest {
             .isInstanceOf(XmppException.ConnectionFailed::class.java)
     }
 
+    /**
+     * 解析一个带错误的 stanza，得到 Smack 抛出的 XMPPErrorException。
+     *
+     * @param xml stanza 原文
+     */
+    private fun errorResponse(xml: String): XMPPException.XMPPErrorException {
+        val stanza = PacketParserUtils.parseStanza(
+            PacketParserUtils.getParserFor(xml), XmlEnvironment.EMPTY, JxmppContext.getDefaultContext(),
+        )
+        return XMPPException.XMPPErrorException(stanza, stanza.error)
+    }
+
+    /** 协议规范 §3.2 / §16：改密时密码太弱，not-acceptable + 自定义错误码 weak-password */
+    @Test
+    fun stanzaErrorWithAppErrorCode_mapped() {
+        val e = errorResponse(
+            """
+            <iq type='error' id='a2' from='im.example.com'>
+              <error type='modify'>
+                <not-acceptable xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/>
+                <app-error xmlns='urn:android666:im:error:1' code='weak-password'/>
+              </error>
+            </iq>
+            """.trimIndent(),
+        )
+
+        val error = SmackErrors.toXmppException(e) as XmppException.StanzaError
+        assertThat(error.condition).isEqualTo("not-acceptable")
+        assertThat(error.appErrorCode).isEqualTo("weak-password")
+    }
+
+    /** 协议规范 §6.4：敏感词，消息错误 */
+    @Test
+    fun messageErrorSensitiveWord_mapped() {
+        val e = errorResponse(
+            """
+            <message type='error' id='5b1e' from='10087@im.example.com'>
+              <error type='modify'>
+                <policy-violation xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/>
+                <app-error xmlns='urn:android666:im:error:1' code='sensitive-word'/>
+              </error>
+            </message>
+            """.trimIndent(),
+        )
+
+        val error = SmackErrors.toXmppException(e) as XmppException.StanzaError
+        assertThat(error.condition).isEqualTo("policy-violation")
+        assertThat(error.appErrorCode).isEqualTo("sensitive-word")
+    }
+
+    /** 没有自定义错误码的标准错误 */
+    @Test
+    fun stanzaErrorWithoutAppError_codeNull() {
+        val e = errorResponse(
+            "<iq type='error' id='x'><error type='cancel'><feature-not-implemented " +
+                "xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/></error></iq>",
+        )
+
+        val error = SmackErrors.toXmppException(e) as XmppException.StanzaError
+        assertThat(error.condition).isEqualTo("feature-not-implemented")
+        assertThat(error.appErrorCode).isNull()
+    }
+
     /** StreamError 条件枚举名与协议写法的转换（下划线 ↔ 横线） */
     @Test
     fun conditionToString_usesProtocolSpelling() {

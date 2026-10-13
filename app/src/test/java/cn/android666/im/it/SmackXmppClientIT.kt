@@ -2,6 +2,7 @@ package cn.android666.im.it
 
 import cn.android666.im.core.common.DefaultDispatcherProvider
 import cn.android666.im.core.common.DispatcherProvider
+import cn.android666.im.core.common.ServerClock
 import cn.android666.im.core.common.SystemTimeClock
 import cn.android666.im.core.security.RootCaTrust
 import cn.android666.im.core.xmpp.ConnectionState
@@ -80,6 +81,36 @@ class SmackXmppClientIT {
 
         assertThat(result.resumed).isFalse()
         assertThat(client.connectionState.value).isEqualTo(ConnectionState.Authenticated(resumed = false))
+    }
+
+    /** 2.9：登录后的基础步骤：启用 Carbons、查询服务器时间、能力发现 */
+    @Test
+    fun postLoginSteps_carbonsTimeCapabilities() = runBlocking {
+        val client = newClient()
+        client.login(credential())
+
+        client.enableCarbons()
+
+        val time = client.queryServerTime()
+        // 服务器与测试运行在同一台机器上，时钟偏差应很小
+        val offset = ServerClock(SystemTimeClock).calibrate(time.serverMillis, time.requestSentAtMillis, time.roundTripMillis)
+        assertThat(kotlin.math.abs(offset)).isLessThan(2_000L)
+        assertThat(time.roundTripMillis).isAtLeast(0L)
+
+        val caps = client.discoverCapabilities()
+        assertThat(caps.mam).isTrue()
+        assertThat(caps.carbons).isTrue()
+        assertThat(caps.externalServices).isTrue()
+        assertThat(caps.maxUploadFileSize).isEqualTo(104_857_600L)
+        // 自研插件尚未开发（开发计划 M3），对应功能不可用
+        assertThat(caps.org).isFalse()
+    }
+
+    /** 未登录时调用请求类方法抛出 NotConnected */
+    @Test
+    fun requestWithoutLogin_notConnected() = runBlocking {
+        val e = runCatching { newClient().discoverCapabilities() }.exceptionOrNull()
+        assertThat(e).isInstanceOf(XmppException.NotConnected::class.java)
     }
 
     @Test

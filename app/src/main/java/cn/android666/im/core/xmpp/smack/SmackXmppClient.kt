@@ -8,7 +8,9 @@ import cn.android666.im.core.xmpp.ConnectionState
 import cn.android666.im.core.xmpp.Credential
 import cn.android666.im.core.xmpp.DisconnectReason
 import cn.android666.im.core.xmpp.LoginResult
+import cn.android666.im.core.xmpp.ServerCapabilities
 import cn.android666.im.core.xmpp.ServerConfig
+import cn.android666.im.core.xmpp.ServerTime
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +25,11 @@ import org.jivesoftware.smack.ReconnectionManager
 import org.jivesoftware.smack.sm.predicates.Predicate
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration
+import org.jivesoftware.smackx.carbons.CarbonManager
+import org.jivesoftware.smackx.disco.ServiceDiscoveryManager
+import org.jivesoftware.smackx.httpfileupload.HttpFileUploadManager
 import org.jivesoftware.smackx.ping.PingManager
+import org.jivesoftware.smackx.time.EntityTimeManager
 import java.net.InetAddress
 import javax.net.ssl.X509TrustManager
 import kotlin.system.measureTimeMillis
@@ -157,6 +163,32 @@ class SmackXmppClient(
         }
     }
 
+    override suspend fun enableCarbons() = request("启用 Carbons") { current ->
+        CarbonManager.getInstanceFor(current).enableCarbons()
+    }
+
+    override suspend fun queryServerTime(): ServerTime = request("查询服务器时间") { current ->
+        val sentAt = clock.nowMillis()
+        val startElapsed = clock.elapsedMillis()
+        val time = EntityTimeManager.getInstanceFor(current).getTime(current.xmppServiceDomain)
+        ServerTime(
+            serverMillis = time.zonedDateTime.toInstant().toEpochMilli(),
+            requestSentAtMillis = sentAt,
+            roundTripMillis = clock.elapsedMillis() - startElapsed,
+        )
+    }
+
+    override suspend fun discoverCapabilities(): ServerCapabilities = request("能力发现") { current ->
+        val info = ServiceDiscoveryManager.getInstanceFor(current).discoverInfo(current.xmppServiceDomain)
+        val features = info.features.map { it.`var` }.toSet()
+        // 文件上传服务是独立的子域，需要另外发现；没有上传服务不影响登录
+        val upload = HttpFileUploadManager.getInstanceFor(current)
+        val maxFileSize = runCatching { if (upload.discoverUploadService()) upload.defaultUploadService.maxFileSize else null }
+            .onFailure { log.warn("发现文件上传服务失败", it) }
+            .getOrNull()
+        ServerCapabilities(features, maxFileSize)
+    }
+
     override suspend fun checkAlive(): Boolean = withContext(dispatchers.io) {
         val current = connection
         if (current == null || !current.isAuthenticated) return@withContext false
@@ -184,6 +216,26 @@ class SmackXmppClient(
                 .onFailure { log.warn("断开连接时出错", it) }
             connection = null
             state.value = ConnectionState.Idle
+        }
+    }
+
+    /**
+     * 在已认证的连接上执行一次请求：切到 IO 线程、记录耗时、把 Smack 异常映射为 [XmppException]。
+     *
+     * @param action 操作名称，写日志用
+     * @param block 使用连接执行的阻塞操作
+     * @return 操作结果
+     * @throws XmppException 未连接或操作失败
+     */
+    private suspend fun <T> request(action: String, block: (XMPPTCPConnection) -> T): T = withContext(dispatchers.io) {
+        val current = connection?.takeIf { it.isAuthenticated } ?: throw XmppException.NotConnected()
+        val start = clock.elapsedMillis()
+        try {
+            block(current).also { log.info("{}成功，耗时 {}ms", action, clock.elapsedMillis() - start) }
+        } catch (e: Exception) {
+            val error = SmackErrors.toXmppException(e)
+            log.warn("{}失败，耗时 {}ms：{}", action, clock.elapsedMillis() - start, error.message, e)
+            throw error
         }
     }
 

@@ -35,6 +35,29 @@ interface XmppClient {
     suspend fun reconnect(): LoginResult
 
     /**
+     * 启用 Message Carbons（XEP-0280，协议规范 §2.2 第 3 步）：本人其他端收发的单聊消息会抄送到本端。
+     *
+     * @throws XmppException 未连接、服务器不支持或返回错误
+     */
+    suspend fun enableCarbons()
+
+    /**
+     * 查询服务器时间（XEP-0202，协议规范 §2.2 第 4 步），用于计算本地与服务器的时钟偏差。
+     *
+     * @return 服务器时间与本次请求的耗时
+     * @throws XmppException 未连接、超时或服务器返回错误
+     */
+    suspend fun queryServerTime(): ServerTime
+
+    /**
+     * 能力发现（XEP-0030，协议规范 §1.7、§2.2 第 5 步）：查询服务器域名的 feature，以及文件上传服务的大小上限（§9）。
+     *
+     * @return 服务器能力
+     * @throws XmppException 未连接、超时或服务器返回错误
+     */
+    suspend fun discoverCapabilities(): ServerCapabilities
+
+    /**
      * 立即检测连接是否仍然可用（发送 XEP-0199 ping，10 秒内无响应视为失效）。
      * 用于切换网络后：旧网络上的 TCP 连接通常已经失效，但要等心跳超时才会发现，主动检测能更快重连。
      * 检测失败时连接会被断开，状态变为 [ConnectionState.Disconnected]（网络原因），由重连逻辑接手。
