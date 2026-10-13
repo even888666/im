@@ -15,6 +15,7 @@ import javax.xml.parsers.DocumentBuilderFactory
  * @property attributes 属性（不含 xmlns 声明）
  * @property children 子元素
  * @property text 元素直接包含的文本（不含子元素中的文本），已去掉首尾空白
+ * @property rawText 元素直接包含的原始文本（不去空白，消息正文等需要原样保留的内容使用）
  */
 data class XmlNode(
     val name: String,
@@ -22,6 +23,7 @@ data class XmlNode(
     val attributes: Map<String, String>,
     val children: List<XmlNode>,
     val text: String,
+    val rawText: String = text,
 ) {
 
     /**
@@ -116,6 +118,7 @@ data class XmlNode(
                 attributes = attributes,
                 children = children,
                 text = text.toString().trim(),
+                rawText = text.toString(),
             )
         }
     }
