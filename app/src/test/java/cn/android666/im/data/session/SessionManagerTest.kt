@@ -222,9 +222,9 @@ class SessionManagerTest {
         assertThat(manager.state.value).isInstanceOf(SessionState.Ready::class.java)
     }
 
-    /** 被挤下线：会话结束，保留保存的密码 */
+    /** 被挤下线：会话结束，清除保存的密码（防止本机重启后自动登录把另一台设备挤下线） */
     @Test
-    fun conflict_endsSessionKeepingPassword() = runTest {
+    fun conflict_endsSessionClearingPassword() = runTest {
         val manager = newSessionManager()
         manager.login(credential)
         runCurrent()
@@ -236,7 +236,7 @@ class SessionManagerTest {
         runCurrent()
 
         assertThat(manager.state.value).isEqualTo(SessionState.Ended("10001", DisconnectReason.Conflict))
-        assertThat(credentialStore.load()!!.password).isEqualTo("Passw0rd")
+        assertThat(credentialStore.load()).isEqualTo(SavedLogin("10001", null))
     }
 
     /** 账号被禁用：会话结束，清除保存的密码（协议规范 §2.4） */

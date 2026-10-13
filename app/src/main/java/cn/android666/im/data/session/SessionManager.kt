@@ -168,8 +168,10 @@ class SessionManager(
     }
 
     /**
-     * 会话被结束（协议规范 §2.4）：账号禁用、认证失败时清除保存的密码，不再自动登录；
-     * 被挤下线时保留密码（用户可能希望在本机重新登录）。
+     * 会话被结束（协议规范 §2.4）：被挤下线、账号禁用、认证失败都清除保存的密码（保留工号供登录页回显），
+     * 不再自动登录，需要用户手动重新登录（决策记录 A20）。
+     *
+     * 被挤下线也要清除：否则本机进程重启后会用保存的密码自动登录，反过来把另一台设备挤下线，两台设备互相踢。
      *
      * @param current 会话上下文
      * @param reason 原因
@@ -177,9 +179,7 @@ class SessionManager(
     private suspend fun onSessionEnded(current: SessionContext, reason: DisconnectReason) {
         log.warn("会话结束：{}", reason)
         stepsJob?.cancel()
-        if (reason == DisconnectReason.AccountDisabled || reason == DisconnectReason.AuthenticationFailed) {
-            credentialStore.clearPassword()
-        }
+        credentialStore.clearPassword()
         connectionManager.stop()
         context = null
         pausedAt = null
