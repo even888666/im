@@ -1,5 +1,7 @@
 package cn.android666.im.core.xmpp.extension.msg
 
+import kotlinx.serialization.Serializable
+
 /**
  * 引用回复（协议规范 §8.5，XEP-0461）。
  *
@@ -15,6 +17,7 @@ data class ReplyRef(val to: String, val id: String)
  * @property end 结束码点（不含）
  * @property jid 被 @ 的用户 JID；为群 JID 时表示 @所有人
  */
+@Serializable
 data class Mention(val begin: Int, val end: Int, val jid: String) {
 
     /**

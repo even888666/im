@@ -18,6 +18,7 @@ import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
 import cn.android666.im.core.xmpp.iq.IqRequest
 import cn.android666.im.core.xmpp.iq.XmlNode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,11 +28,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jivesoftware.smack.ConnectionConfiguration.SecurityMode
 import org.jivesoftware.smack.ConnectionListener
 import org.jivesoftware.smack.ReconnectionManager
+import org.jivesoftware.smack.StanzaListener
 import org.jivesoftware.smack.XMPPException
+import org.jivesoftware.smack.filter.StanzaTypeFilter
 import org.jivesoftware.smack.packet.IQ
+import org.jivesoftware.smack.packet.Message
 import org.jivesoftware.smack.packet.Presence
 import org.jivesoftware.smack.packet.StandardExtensionElement
 import org.jivesoftware.smack.packet.StanzaError
@@ -104,11 +109,24 @@ class SmackXmppClient(
     @Volatile
     private var connection: XMPPTCPConnection? = null
 
-    /** 监听连接被动断开，更新状态 */
     /** 花名册推送（跨越重连持续有效） */
     private val rosterPushFlow = MutableSharedFlow<RosterItem>(extraBufferCapacity = ROSTER_PUSH_BUFFER)
 
     override val rosterPushes: Flow<RosterItem> = rosterPushFlow.asSharedFlow()
+
+    /**
+     * 收到的 message 报文。缓冲区不设上限：Smack 的监听线程只管放入、从不阻塞，订阅者按顺序处理
+     * （单次 MAM 补拉最多 100 条，实际不会积压太多）。
+     */
+    private val incomingMessageFlow = MutableSharedFlow<String>(extraBufferCapacity = Int.MAX_VALUE)
+
+    override val incomingMessages: Flow<String> = incomingMessageFlow.asSharedFlow()
+
+    /** 收到 message 时转为 XML 发出（同步监听器：按到达顺序在单个线程中回调） */
+    private val messageListener = StanzaListener { stanza ->
+        val xml = SmackMessages.toXml(stanza as Message)
+        if (!incomingMessageFlow.tryEmit(xml)) log.warn("收到的消息无法放入缓冲区，丢弃：id={}", stanza.stanzaId)
+    }
 
     /**
      * Smack 花名册的变化回调（在 Smack 的线程中调用）。登录时加载花名册也会回调 entriesAdded，转发后由业务层幂等处理。
@@ -127,6 +145,7 @@ class SmackXmppClient(
         }
     }
 
+    /** 监听连接被动断开，更新状态 */
     private val connectionListener = object : ConnectionListener {
         override fun connectionClosedOnError(e: Exception) {
             val reason = SmackErrors.toDisconnectReason(e)
@@ -158,6 +177,7 @@ class SmackXmppClient(
                 ReconnectionManager.getInstanceFor(this).disableAutomaticReconnection()
                 configureKeepAlive(this)
                 configureRoster(this)
+                addSyncStanzaListener(messageListener, StanzaTypeFilter.MESSAGE)
             }
             try {
                 val cost = measureTimeMillis {
@@ -389,6 +409,39 @@ class SmackXmppClient(
         log.info("已设置头像：{} 字节", data.size)
     }
 
+    override suspend fun sendMessage(xml: String, ackTimeoutMillis: Long): Boolean {
+        val message = SmackMessages.build(xml)
+        val id = message.stanzaId
+        val current = connection?.takeIf { it.isAuthenticated } ?: throw XmppException.NotConnected()
+        val acked = CompletableDeferred<Unit>()
+        val smEnabled = current.isSmEnabled
+        withContext(dispatchers.io) {
+            try {
+                // 先注册确认监听再发送，避免确认先于注册到达
+                if (smEnabled) current.addStanzaIdAcknowledgedListener(id) { acked.complete(Unit) }
+                current.sendStanza(message)
+            } catch (e: Exception) {
+                if (smEnabled) current.removeStanzaIdAcknowledgedListener(id)
+                val error = SmackErrors.toXmppException(e)
+                log.warn("发送消息失败：id={}，{}", id, error.message)
+                throw error
+            }
+        }
+        if (!smEnabled) {
+            log.warn("服务器未启用流管理，无法确认消息：id={}", id)
+            return false
+        }
+        val start = clock.elapsedMillis()
+        val ok = withTimeoutOrNull(ackTimeoutMillis) { acked.await() } != null
+        if (!ok) {
+            current.removeStanzaIdAcknowledgedListener(id)
+            log.warn("消息 {}ms 内未收到服务器确认：id={}", ackTimeoutMillis, id)
+            throw XmppException.Timeout()
+        }
+        log.debug("消息已确认：id={}，耗时 {}ms", id, clock.elapsedMillis() - start)
+        return true
+    }
+
     override suspend fun checkAlive(): Boolean = withContext(dispatchers.io) {
         val current = connection
         if (current == null || !current.isAuthenticated) return@withContext false
@@ -507,11 +560,6 @@ class SmackXmppClient(
     }
 
     /**
-     * 登录失败异常 → 连接状态中的断开原因。
-     *
-     * @return 断开原因
-     */
-    /**
      * 是否为"没有 vCard"的错误：Openfire 对没有 vCard 的用户返回 service-unavailable，XEP-0054 也允许 item-not-found。
      *
      * @return 是则为 true
@@ -536,6 +584,11 @@ class SmackXmppClient(
         },
     )
 
+    /**
+     * 登录失败异常 → 连接状态中的断开原因。
+     *
+     * @return 断开原因
+     */
     private fun XmppException.toDisconnectReason(): DisconnectReason = when (this) {
         is XmppException.AuthenticationFailed -> DisconnectReason.AuthenticationFailed
         is XmppException.Conflict -> DisconnectReason.Conflict

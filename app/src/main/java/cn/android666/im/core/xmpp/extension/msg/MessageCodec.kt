@@ -395,7 +395,8 @@ object MessageCodec {
             is MessageContent.Merged -> content.items.forEach { item ->
                 sb.append("<forwarded xmlns='").append(NS_FORWARD).append("'>")
                 item.stamp?.let { sb.append("<delay xmlns='").append(NS_DELAY).append("' stamp='").append(formatTime(it)).append("'/>") }
-                sb.append("<message type='chat' id='").append(Xml.escape(item.id)).append("' from='").append(Xml.escape(item.from)).append("'>")
+                // 内层 message 必须显式声明 jabber:client，否则按 XML 规则会继承 forwarded 的命名空间
+                sb.append("<message xmlns='jabber:client' type='chat' id='").append(Xml.escape(item.id)).append("' from='").append(Xml.escape(item.from)).append("'>")
                 sb.append("<body>").append(Xml.escape(item.body)).append("</body>")
                 appendContent(sb, item.content)
                 sb.append("</message></forwarded>")

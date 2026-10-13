@@ -138,6 +138,28 @@ interface XmppClient {
     suspend fun setMyAvatar(data: ByteArray, mimeType: String)
 
     /**
+     * 收到的 message 报文（原始 XML，由 `core.xmpp.extension.msg.MessageCodec` 解析），包括实时消息、离线消息、
+     * Carbons 抄送、MAM 补拉结果和 type='error' 的退回消息；跨越重连持续有效，按到达顺序发出。
+     * 没有订阅者时到达的报文会被丢弃（漏掉的消息由 MAM 补拉找回）。
+     */
+    val incomingMessages: Flow<String>
+
+    /**
+     * 发送一条 message 报文并等待服务器的流管理确认（XEP-0198 `<a/>`，协议规范 §6.2"已发送"）。
+     *
+     * 连接在等待期间断开时，Smack 会在流恢复后重发未确认的报文，确认仍会到达；超时后不再等待
+     * （之后即使服务器收到了，接收方也会按消息 ID 去重）。
+     *
+     * @param xml message 报文（必须带 id），由 MessageCodec 生成
+     * @param ackTimeoutMillis 等待确认的超时时间（毫秒）
+     * @return true 表示收到了服务器确认；false 表示服务器未启用流管理，无法确认（报文已写出，视为已发送）
+     * @throws XmppException.NotConnected 未连接
+     * @throws XmppException.Timeout 超时未确认
+     * @throws IllegalArgumentException 报文格式错误或没有 id（程序错误）
+     */
+    suspend fun sendMessage(xml: String, ackTimeoutMillis: Long): Boolean
+
+    /**
      * 立即检测连接是否仍然可用（发送 XEP-0199 ping，10 秒内无响应视为失效）。
      * 用于切换网络后：旧网络上的 TCP 连接通常已经失效，但要等心跳超时才会发现，主动检测能更快重连。
      * 检测失败时连接会被断开，状态变为 [ConnectionState.Disconnected]（网络原因），由重连逻辑接手。

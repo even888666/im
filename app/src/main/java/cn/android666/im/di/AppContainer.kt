@@ -13,6 +13,8 @@ import cn.android666.im.data.account.CredentialStore
 import cn.android666.im.data.avatar.AvatarRepository
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
+import cn.android666.im.data.message.MessageRepository
+import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.data.presence.PresenceRepository
 import cn.android666.im.data.org.OrgSyncStep
@@ -129,6 +131,8 @@ class AppContainer(context: Context) {
             onUserLoggedIn = { username ->
                 logFilePrefixManager.onLogin(username)
                 userDatabaseHolder.open(username)
+                // 确保发送队列已创建：它监听用户数据库的打开，恢复上次未发完的消息
+                sendQueue.wake()
             },
             steps = listOf(
                 EnableCarbonsStep(xmppClient),
@@ -163,6 +167,16 @@ class AppContainer(context: Context) {
 
     /** 组织架构：同步、本地查询与搜索 */
     val orgRepository: OrgRepository by lazy { OrgRepository(xmppClient, userDatabaseHolder, clock) }
+
+    /** 发送队列：按顺序发送"发送中"的消息，等待服务器确认 */
+    val sendQueue: SendQueue by lazy { SendQueue(xmppClient, userDatabaseHolder, applicationScope, clock) }
+
+    /** 消息仓库：发送入口、消息与会话写库 */
+    val messageRepository: MessageRepository by lazy {
+        MessageRepository(userDatabaseHolder, sendQueue, serverClock, idGenerator) {
+            userDatabaseHolder.username?.let { "$it@${serverConfig.domain}" }
+        }
+    }
 
     /** 前后台切换处理（CSI、回到前台立即重连、按需同步组织架构） */
     val appVisibilityHandler: AppVisibilityHandler by lazy {

@@ -186,6 +186,36 @@ class FakeXmppClient : XmppClient {
         avatars[selfJid] = data
     }
 
+    private val incomingFlow = MutableSharedFlow<String>(extraBufferCapacity = 256)
+
+    override val incomingMessages: Flow<String> = incomingFlow
+
+    /**
+     * 模拟收到一条 message 报文。
+     *
+     * @param xml message 报文
+     */
+    suspend fun receive(xml: String) {
+        incomingFlow.emit(xml)
+    }
+
+    /** 已发送（已交给 [messageAckHandler] 处理）的 message 报文 */
+    val sentMessages = mutableListOf<String>()
+
+    /**
+     * 发送消息时的服务器行为：返回 true 表示收到确认，false 表示服务器未启用流管理；
+     * 可以 delay 模拟确认延迟、抛出 XmppException 模拟超时等。默认立即确认。
+     */
+    var messageAckHandler: suspend (xml: String, ackTimeoutMillis: Long) -> Boolean = { _, _ -> true }
+
+    /** 与 SmackXmppClient 一致：未连接时抛出 NotConnected；先记录报文再等待确认 */
+    override suspend fun sendMessage(xml: String, ackTimeoutMillis: Long): Boolean {
+        require(XmlNode.parse(xml).attr("id") != null) { "message 必须带 id" }
+        if (state.value !is ConnectionState.Authenticated) throw XmppException.NotConnected()
+        sentMessages += xml
+        return messageAckHandler(xml, ackTimeoutMillis)
+    }
+
     /** 依次用于每次 [checkAlive] 的结果，未预设时返回 true；返回 false 时模拟连接失效并断开 */
     val aliveResults = ArrayDeque<Boolean>()
 

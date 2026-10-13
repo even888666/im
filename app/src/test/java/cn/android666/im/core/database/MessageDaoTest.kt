@@ -63,6 +63,31 @@ class MessageDaoTest {
         assertThat(dao.getByRowId(row)?.status).isEqualTo(MessageEntity.STATUS_READ)
     }
 
+    /** 发送队列的状态更新：只修改仍在"发送中"的消息；只有失败的消息可以重发 */
+    @Test
+    fun sendQueueTransitions() = runTest {
+        val dao = db.messageDao()
+        val row = dao.insert(msg("m1"))
+
+        assertThat(dao.markResend(row)).isEqualTo(0)
+        assertThat(dao.markSendFailed(row, "timeout")).isEqualTo(1)
+        assertThat(dao.getByRowId(row)?.errorCode).isEqualTo("timeout")
+        // 已失败后再收到确认不改变状态
+        assertThat(dao.markSent(row)).isEqualTo(0)
+
+        assertThat(dao.markResend(row)).isEqualTo(1)
+        assertThat(dao.getByRowId(row)?.status).isEqualTo(MessageEntity.STATUS_SENDING)
+        assertThat(dao.getByRowId(row)?.errorCode).isNull()
+        assertThat(dao.markSent(row)).isEqualTo(1)
+        // 已发送后超时不改变状态
+        assertThat(dao.markSendFailed(row, "timeout")).isEqualTo(0)
+        assertThat(dao.getByRowId(row)?.status).isEqualTo(MessageEntity.STATUS_SENT)
+
+        // 收到的消息不能重发
+        val incoming = dao.insert(msg("m2", direction = MessageEntity.DIRECTION_IN, status = MessageEntity.STATUS_FAILED))
+        assertThat(dao.markResend(incoming)).isEqualTo(0)
+    }
+
     /** 已读标记：该时间及之前发出的消息都已读，失败的不变 */
     @Test
     fun markReadUpTo() = runTest {

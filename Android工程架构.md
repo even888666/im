@@ -254,17 +254,17 @@ interface XmppClient {
     /** 连接状态：未连接 / 连接中 / 已认证 / 已断开（含原因） */
     val connectionState: StateFlow<ConnectionState>
 
-    /** 收到的消息流（已解析为业务模型），包括实时消息和 Carbons */
-    val incomingMessages: SharedFlow<IncomingMessage>
+    /** 收到的 message 报文（原始 XML，由 extension/msg 中的 MessageCodec 解析），包括实时消息、Carbons、MAM 结果 */
+    val incomingMessages: Flow<String>
 
     /** 登录，失败时抛出带原因的异常 */
     suspend fun login(credential: Credential)
 
-    /** 发送消息，返回服务器流管理确认结果 */
-    suspend fun sendMessage(message: OutgoingMessage)
+    /** 发送 message 报文（MessageCodec 生成）并等待服务器流管理确认，超时抛出 XmppException.Timeout */
+    suspend fun sendMessage(xml: String, ackTimeoutMillis: Long): Boolean
 
     /** 发送 IQ 并等待结果，用于协议规范中的所有自定义 IQ */
-    suspend fun <T : IqResult> sendIq(request: IqRequest<T>): T
+    suspend fun <T> sendIq(request: IqRequest<T>): T
 
     suspend fun logout()
 }

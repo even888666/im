@@ -68,6 +68,34 @@ interface MessageDao {
     suspend fun updateStatus(rowId: Long, status: Int, errorCode: String? = null)
 
     /**
+     * 收到服务器的流管理确认：发送中 → 已发送（已被回执、已读或标记失败的不变）。
+     *
+     * @param rowId rowId
+     * @return 更新的条数
+     */
+    @Query("UPDATE message SET status = 1 WHERE rowId = :rowId AND status = 0")
+    suspend fun markSent(rowId: Long): Int
+
+    /**
+     * 发送失败（超时、长时间未连接等）：只修改仍在"发送中"的消息。
+     *
+     * @param rowId rowId
+     * @param errorCode 失败原因
+     * @return 更新的条数
+     */
+    @Query("UPDATE message SET status = 4, errorCode = :errorCode WHERE rowId = :rowId AND status = 0")
+    suspend fun markSendFailed(rowId: Long, errorCode: String): Int
+
+    /**
+     * 手动重发：发送失败 → 发送中，清除失败原因（消息 ID 不变，协议规范 §6.2）。
+     *
+     * @param rowId rowId
+     * @return 更新的条数；消息不是发送失败状态时为 0
+     */
+    @Query("UPDATE message SET status = 0, errorCode = NULL WHERE rowId = :rowId AND direction = 1 AND status = 4")
+    suspend fun markResend(rowId: Long): Int
+
+    /**
      * 收到送达回执：发出的消息从"发送中 / 已发送"改为"已送达"（已读、失败的不变）。
      *
      * @param conversationId 会话 ID
