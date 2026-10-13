@@ -2,6 +2,7 @@ package cn.android666.im.di
 
 import android.content.Context
 import cn.android666.im.BuildConfig
+import cn.android666.im.core.database.UserDatabaseHolder
 import cn.android666.im.core.datastore.settingsDataStore
 import cn.android666.im.core.network.AndroidNetworkMonitor
 import cn.android666.im.core.network.NetworkMonitor
@@ -118,7 +119,10 @@ class AppContainer(context: Context) {
             client = xmppClient,
             connectionManager = connectionManager,
             credentialStore = credentialStore,
-            onUserLoggedIn = logFilePrefixManager::onLogin,
+            onUserLoggedIn = { username ->
+                logFilePrefixManager.onLogin(username)
+                userDatabaseHolder.open(username)
+            },
             steps = listOf(
                 EnableCarbonsStep(xmppClient),
                 ServerTimeStep(xmppClient, serverClock),
@@ -127,8 +131,12 @@ class AppContainer(context: Context) {
                 InitialPresenceStep(xmppClient),
             ),
             scope = applicationScope,
+            onUserLoggedOut = userDatabaseHolder::close,
         )
     }
+
+    /** 当前账号的用户数据库（按工号分库，登录时打开、退出登录时关闭） */
+    val userDatabaseHolder: UserDatabaseHolder by lazy { UserDatabaseHolder(UserDatabaseHolder.create(appContext)) }
 
     /** 前后台切换处理（CSI、回到前台立即重连） */
     val appVisibilityHandler: AppVisibilityHandler by lazy {

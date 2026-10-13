@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 /**
@@ -143,6 +145,11 @@ android {
     }
 }
 
+// Room：schema 导出到 app/schemas/（纳入版本控制，Android工程架构.md §5.3），迁移测试从这里读取旧版本的 schema
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.appcompat)
@@ -158,6 +165,8 @@ dependencies {
     implementation(libs.androidx.startup.runtime)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
     // XMPP（Smack），只允许 core/xmpp/smack 包引用（Android工程架构.md §3.3）
     implementation(libs.smack.android.extensions)
     implementation(libs.smack.tcp)

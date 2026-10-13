@@ -49,6 +49,9 @@ class SessionManagerTest {
     private val serverClock = ServerClock(clock)
     private val loggedInUsers = mutableListOf<String>()
 
+    /** 退出登录回调（关闭用户数据库）的调用次数 */
+    private var loggedOutCount = 0
+
     /** 可逆的假加密 */
     private val cipher = object : CredentialCipher {
         override fun encrypt(plain: String) = "enc:$plain"
@@ -83,8 +86,9 @@ class SessionManagerTest {
             AccountStatusStep(client),
             InitialPresenceStep(client),
         )
-        return SessionManager(client, connectionManager, credentialStore, { loggedInUsers += it }, steps, backgroundScope)
-            .also { runCurrent() }
+        return SessionManager(client, connectionManager, credentialStore, { loggedInUsers += it }, steps, backgroundScope) {
+            loggedOutCount++
+        }.also { runCurrent() }
     }
 
     private val credential = Credential("10001", "Passw0rd")
@@ -287,5 +291,7 @@ class SessionManagerTest {
         assertThat(client.calls.last()).isEqualTo("logout")
         assertThat(manager.state.value).isEqualTo(SessionState.LoggedOut)
         assertThat(credentialStore.load()).isEqualTo(SavedLogin("10001", null))
+        // 退出登录时关闭用户数据库
+        assertThat(loggedOutCount).isEqualTo(1)
     }
 }

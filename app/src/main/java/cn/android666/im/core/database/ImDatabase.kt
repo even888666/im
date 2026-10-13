@@ -1,0 +1,58 @@
+package cn.android666.im.core.database
+
+import androidx.room.Database
+import androidx.room.RoomDatabase
+import cn.android666.im.core.database.dao.DepartmentDao
+import cn.android666.im.core.database.dao.EmployeeDao
+import cn.android666.im.core.database.dao.SyncStateDao
+import cn.android666.im.core.database.entity.DepartmentEntity
+import cn.android666.im.core.database.entity.EmployeeEntity
+import cn.android666.im.core.database.entity.SyncStateEntity
+
+/**
+ * 用户数据库（Android工程架构.md §5）：每个账号一个库 `im_{工号}.db`，由 [UserDatabaseHolder] 打开和关闭。
+ *
+ * 升级规则（§5.3）：每次修改表结构都要把 version 加 1、在 [ImDatabaseMigrations] 中编写 Migration 并写迁移测试；
+ * 禁止 fallbackToDestructiveMigration（会丢失聊天记录）。schema 导出在 app/schemas/，纳入版本控制。
+ *
+ * 版本历史：
+ * - 1：组织架构缓存（department、employee）、同步游标（sync_state）—— 开发计划 3.12
+ */
+@Database(
+    entities = [DepartmentEntity::class, EmployeeEntity::class, SyncStateEntity::class],
+    version = 1,
+    exportSchema = true,
+)
+abstract class ImDatabase : RoomDatabase() {
+
+    /**
+     * 部门表。
+     *
+     * @return DAO
+     */
+    abstract fun departmentDao(): DepartmentDao
+
+    /**
+     * 员工表。
+     *
+     * @return DAO
+     */
+    abstract fun employeeDao(): EmployeeDao
+
+    /**
+     * 同步游标。
+     *
+     * @return DAO
+     */
+    abstract fun syncStateDao(): SyncStateDao
+
+    companion object {
+        /**
+         * 用户数据库的文件名。
+         *
+         * @param username 工号
+         * @return 文件名，如 im_10001.db
+         */
+        fun fileName(username: String): String = "im_$username.db"
+    }
+}

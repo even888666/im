@@ -33,10 +33,10 @@ import kotlin.system.measureTimeMillis
  * @property client XMPP 客户端（改密时发送 IQ）
  * @property connectionManager 连接管理
  * @property credentialStore 凭证存储
- * @property onUserLoggedIn 开始新会话时调用，参数为工号；生产环境传入 LogFilePrefixManager::onLogin，
- * 把日志文件名前缀切换为工号
+ * @property onUserLoggedIn 开始新会话时调用，参数为工号；生产环境中把日志文件名前缀切换为工号、打开该账号的用户数据库
  * @property steps 登录后的步骤，按执行顺序排列
  * @property scope 应用级协程作用域
+ * @property onUserLoggedOut 退出登录时调用；生产环境中关闭用户数据库
  */
 class SessionManager(
     private val client: XmppClient,
@@ -45,6 +45,7 @@ class SessionManager(
     private val onUserLoggedIn: (String) -> Unit,
     private val steps: List<SessionStep>,
     private val scope: CoroutineScope,
+    private val onUserLoggedOut: () -> Unit = {},
 ) {
 
     private val log = Logs.file(TAG)
@@ -139,6 +140,7 @@ class SessionManager(
         context = null
         pausedAt = null
         mutableState.value = SessionState.LoggedOut
+        onUserLoggedOut()
     }
 
     /**
