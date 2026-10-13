@@ -36,6 +36,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // Java 库脱糖：Smack 等库使用了 minSdk 24 上不完整的 Java 8+ API（如 java.time）
+        isCoreLibraryDesugaringEnabled = true
     }
     packaging {
         resources {
@@ -79,6 +81,11 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.logback.android)
     implementation(libs.androidx.startup.runtime)
+    // XMPP（Smack），只允许 core/xmpp/smack 包引用（Android工程架构.md §3.3）
+    implementation(libs.smack.android.extensions)
+    implementation(libs.smack.tcp)
+    implementation(libs.smack.experimental)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.material)
 
     testImplementation(libs.junit)
@@ -88,6 +95,7 @@ dependencies {
     testImplementation(libs.truth)
     testImplementation(libs.robolectric)
     testImplementation(libs.mockk)
+    testImplementation(libs.smack.java11)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }
@@ -97,5 +105,16 @@ dependencies {
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     if (name.contains("UnitTest")) {
         compilerOptions.optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+}
+
+// Smack 的 XML 解析器（smack-xmlparser-xpp3）依赖 xpp3 的 jar，其中的 org.xmlpull 类与 Android 系统自带的重复
+// （Android 已内置 XmlPullParser 及其实现），Smack 4.5 依赖的是 org.codelibs:xpp3 和 xpp3:xpp3_min，
+// 在 App 中全部排除，smack-xmlparser-xpp3 会使用系统的实现。单元测试运行在 JVM 上，需要保留
+configurations.configureEach {
+    if (!name.contains("UnitTest", ignoreCase = true)) {
+        exclude(group = "org.codelibs", module = "xpp3")
+        exclude(group = "xpp3", module = "xpp3")
+        exclude(group = "xpp3", module = "xpp3_min")
     }
 }

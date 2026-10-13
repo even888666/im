@@ -19,10 +19,23 @@
 # - AndroidX Startup：保留所有 Initializer 实现类（含 cn.android666.im.core.log.LogInitializer）
 # - kotlinx.serialization：运行库自带 R8 规则，@Serializable 类的序列化器会被保留
 #
-# Smack、WebRTC 的规则在接入时添加。
+# WebRTC 的规则在接入时添加。
 # ============================================================================
 
 # 崩溃日志与 release 版文件日志使用 %class 输出类名（见 assets/logback.xml），
 # 保留源文件名和行号信息，配合 mapping.txt 可还原崩溃堆栈
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# ---------- Smack（XMPP） ----------
+# Smack 通过 smack-config.xml、*.providers 等资源文件中的类名反射创建初始化器和扩展元素解析器（Provider），
+# 并用 ServiceLoader 加载 XML 解析器；这些入口无法逐一列举，整体保留 Smack 的包
+-keep class org.jivesoftware.smack.** { *; }
+-keep class org.jivesoftware.smackx.** { *; }
+-keep class org.igniterealtime.smack.** { *; }
+# DNS 解析库（smack-resolver-minidns）同样通过反射初始化
+-keep class org.minidns.** { *; }
+# Smack 的 JVM 专用代码路径引用了 Android 上不存在的 javax 类，运行时不会走到
+-dontwarn javax.naming.**
+-dontwarn javax.security.sasl.**
+-dontwarn javax.xml.stream.**

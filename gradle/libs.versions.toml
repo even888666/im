@@ -22,6 +22,9 @@ coroutines = "1.11.0"
 serialization = "1.11.0"
 logbackAndroid = "0.1.2"
 androidxStartup = "1.2.0"
+# Smack：用户确认直接使用最新正式版（4.5.x）
+smack = "4.5.0"
+desugarJdkLibs = "2.1.5"
 # 测试
 androidxTestCore = "1.7.0"
 turbine = "1.2.1"
@@ -46,6 +49,12 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 logback-android = { module = "cn.android666:logback-android", version.ref = "logbackAndroid" }
 androidx-startup-runtime = { module = "androidx.startup:startup-runtime", version.ref = "androidxStartup" }
+smack-android-extensions = { module = "org.igniterealtime.smack:smack-android-extensions", version.ref = "smack" }
+smack-tcp = { module = "org.igniterealtime.smack:smack-tcp", version.ref = "smack" }
+smack-experimental = { module = "org.igniterealtime.smack:smack-experimental", version.ref = "smack" }
+# JVM 版 Smack，仅用于连接本地 Openfire 的集成测试
+smack-java11 = { module = "org.igniterealtime.smack:smack-java11", version.ref = "smack" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 # 测试
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 androidx-test-core-ktx = { group = "androidx.test", name = "core-ktx", version.ref = "androidxTestCore" }

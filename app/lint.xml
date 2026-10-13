@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Lint 配置：只忽略第三方库中已确认无害的问题，本项目代码仍全部检查 -->
+<lint>
+    <!-- smack-core 内部有一个"信任所有证书"的 TrustManager 类（供测试用途），本项目不使用它，
+         TLS 证书校验由 core/security 统一配置（协议规范 §2.1、功能清单 §18.2） -->
+    <issue id="TrustAllX509TrustManager">
+        <ignore path="**/smack-core-*.jar" />
+    </issue>
+</lint>
