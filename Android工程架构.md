@@ -44,7 +44,7 @@
 
 | 类别 | 选型 | 理由 |
 | --- | --- | --- |
-| XMPP | Smack 4.4.x（`smack-android`、`smack-tcp`、`smack-im`、`smack-extensions`、`smack-experimental`） | Android 上最成熟的 XMPP 库；支持流管理、Carbons、MAM、MUC、HTTP File Upload |
+| XMPP | Smack 最新正式版（当前 4.5.x，用户确认直接使用最新版）（`smack-android`、`smack-tcp`、`smack-im`、`smack-extensions`、`smack-experimental`） | Android 上最成熟的 XMPP 库；支持流管理、Carbons、MAM、MUC、HTTP File Upload |
 | 音视频 | WebRTC Android 预编译库（如 `io.getstream:stream-webrtc-android`） | 三端统一 WebRTC（协议规范 §12）；需验证 H.264 硬件编解码 |
 | 后台任务 | WorkManager | 保活巡检（定期检查前台服务是否存活）、日志上传重试 |
 | 应用启动初始化 | AndroidX Startup | 沿用现有日志库的初始化方式（见 §8） |
@@ -493,8 +493,9 @@ sequenceDiagram
 | JVM 单元测试 | `src/test` | JUnit 4、kotlinx-coroutines-test、Turbine（Flow 测试）、Truth | ViewModel、Repository、UseCase、状态机、工具类、协议扩展元素的序列化与解析 |
 | Robolectric 测试 | `src/test` | Robolectric | 依赖 Android API 的类：Room DAO（内存数据库）、DataStore、通知构建、Smack 在 Android 上的解析 |
 | HTTP 测试 | `src/test` | OkHttp MockWebServer | 官网版本 API、文件上传下载 |
-| 数据库迁移测试 | `src/androidTest` | Room `MigrationTestHelper` | 每个版本的迁移 |
-| UI 测试 | `src/androidTest` | Espresso | 关键页面的基本流程（登录、发消息） |
+| 数据库迁移测试 | `src/test` | Room `MigrationTestHelper` + Robolectric | 每个版本的迁移（云环境没有可用的模拟器，迁移测试放在 Robolectric 上运行，读取导出的 schema） |
+| 集成测试（IT） | `src/test` | Smack（JVM 版）+ 本地 Docker 中的 Openfire | 真实服务器上的登录、收发、同步、插件 IQ；默认跳过，`-Pim.it=true` 时运行（见《开发计划.md》§0.2） |
+| UI 测试 | `src/androidTest` | Espresso | 关键页面的基本流程（登录、发消息）；云环境无法运行，在真机或本地模拟器上执行 |
 
 ### 9.2 可测试性设计
 
