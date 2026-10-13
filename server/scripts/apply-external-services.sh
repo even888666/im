@@ -20,7 +20,7 @@ done
 
 # 固定使用 serviceID 1、2，便于幂等更新；restricted=true 表示需要凭证
 # 用 md5 比较新旧内容，只有变化时才写入并重启
-desired="1|STUN|$TURN_HOST|$TURN_PORT|f|udp|stun||
+desired="1|STUN|$TURN_HOST|$TURN_PORT|f|udp|stun|
 2|TURN|$TURN_HOST|$TURN_PORT|t|udp|turn|$TURN_SECRET"
 current="$(echo "SELECT serviceID || '|' || name || '|' || host || '|' || port || '|' || CASE WHEN restricted THEN 't' ELSE 'f' END || '|' || trim(transport) || '|' || type || '|' || COALESCE(sharedSecret, '') FROM ofExternalServices ORDER BY serviceID;" | psql_exec)"
 

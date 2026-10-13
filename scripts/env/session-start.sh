@@ -4,7 +4,7 @@
 # 云会话容器是临时的，每次新会话都要重新准备：
 #   1. Android SDK（编译 App 必需）
 #   2. Gradle 的 Maven Central 镜像初始化脚本（规避云环境出口 IP 被 Maven Central 限流的 HTTP 429）
-#   3. Docker 守护进程（之后用 Docker Compose 运行 Openfire、PostgreSQL、coturn）
+#   3. Docker 守护进程，并在后台启动 IM 服务端（server/up.sh：Openfire、PostgreSQL、coturn）
 #   4. 预热 Gradle 依赖缓存，使会话开始后能直接编译、运行测试
 # 脚本可重复执行，已完成的步骤会跳过。
 set -euo pipefail
@@ -33,6 +33,10 @@ if ! docker info >/dev/null 2>&1; then
 fi
 if docker info >/dev/null 2>&1; then
   log "Docker 守护进程已就绪"
+  # 服务端首次部署要拉取镜像、构建，需要一两分钟，放到后台执行，不阻塞会话启动；
+  # 集成测试（-Pim.it=true）前确认日志中出现"服务端已就绪"
+  log "在后台启动 IM 服务端，日志：/tmp/im-server-up.log"
+  nohup bash "$PROJECT_DIR/server/up.sh" >/tmp/im-server-up.log 2>&1 &
 else
   # Docker 只影响服务器联调，不影响编译和单元测试，所以只告警不退出
   log "警告：Docker 守护进程启动失败，详见 /var/log/dockerd.log"
