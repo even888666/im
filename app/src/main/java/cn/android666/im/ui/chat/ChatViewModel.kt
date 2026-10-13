@@ -16,7 +16,9 @@ import cn.android666.im.core.log.Logs
 import cn.android666.im.core.media.VoiceRecorder
 import cn.android666.im.core.media.MediaImporter
 import cn.android666.im.data.file.FileTooLargeException
+import cn.android666.im.data.message.FileDownloads
 import cn.android666.im.data.message.MediaSender
+import cn.android666.im.data.message.MediaStatus
 import cn.android666.im.data.message.VoiceError
 import cn.android666.im.data.message.VoicePlayback
 import cn.android666.im.data.settings.AppSettingsStore
@@ -71,6 +73,14 @@ sealed interface ChatEvent {
      * @property maxBytes 上限（字节）
      */
     data class FileTooLarge(val maxBytes: Long) : ChatEvent
+
+    /**
+     * 用其他应用打开本地文件（开发计划 5.6）。
+     *
+     * @property path 本地文件
+     * @property mime MIME 类型
+     */
+    data class OpenFile(val path: String, val mime: String) : ChatEvent
 }
 
 /**
@@ -134,6 +144,7 @@ interface MergedTitleFormatter {
  * @property voicePlayback 语音播放；null 时不能播放
  * @property settings 设备级设置（听筒 / 扬声器）
  * @param clock 时间来源（录音计时）
+ * @property downloads 文件消息的下载（开发计划 5.6）；null 时不能下载
  */
 class ChatViewModel(
     val conversationId: String,
@@ -153,6 +164,7 @@ class ChatViewModel(
     private val voicePlayback: VoicePlayback? = null,
     private val settings: AppSettingsStore? = null,
     clock: Clock = SystemTimeClock,
+    private val downloads: FileDownloads? = null,
 ) : ViewModel() {
 
     /** 聊天水印的文字："姓名 工号"（开发计划 4.18）；未登录时为 null */
@@ -561,6 +573,61 @@ class ChatViewModel(
                 } finally {
                     imported.file.delete()
                 }
+            }
+        }
+    }
+
+    /**
+     * 发送选择的文件（开发计划 5.6）：按顺序逐个导入并发送；某个失败时提示并继续。
+     *
+     * @param uris 文件地址
+     */
+    fun sendFiles(uris: List<Uri>) {
+        val sender = media ?: return
+        val imports = importer ?: return
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            log.info("发送文件：{} 个，会话={}", uris.size, conversationId)
+            for (uri in uris) {
+                val imported = try {
+                    imports.import(uri)
+                } catch (e: IOException) {
+                    log.warn("文件导入失败：{}", e.toString())
+                    eventChannel.send(ChatEvent.Toast(R.string.chat_image_invalid))
+                    continue
+                }
+                try {
+                    sender.sendFile(conversationId, kind.toEntityType(), imported.file, imported.displayName, imported.mime)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: FileTooLargeException) {
+                    eventChannel.send(ChatEvent.FileTooLarge(e.maxSize))
+                } catch (e: Exception) {
+                    log.error("文件发送出错：会话={}", conversationId, e)
+                    eventChannel.send(ChatEvent.Toast(R.string.chat_send_error))
+                } finally {
+                    // 发送成功时副本已被移走，这里只清理失败时留下的
+                    imported.file.delete()
+                }
+            }
+        }
+    }
+
+    /**
+     * 点击文件消息：本地有文件时用其他应用打开；已过期时提示；否则开始下载（下载中再点击暂停）。
+     *
+     * @param message 消息
+     */
+    fun openFile(message: ChatMessage) {
+        val file = (message.content as? MessageContent.File)?.file ?: return
+        val local = message.media?.filePath?.let(::File)
+        viewModelScope.launch {
+            when {
+                local != null && message.media?.status != MediaStatus.DOWNLOADING && local.exists() ->
+                    eventChannel.send(ChatEvent.OpenFile(local.path, file.mime))
+                message.media?.status == MediaStatus.EXPIRED -> eventChannel.send(ChatEvent.Toast(R.string.chat_file_expired))
+                file.url.isEmpty() -> Unit
+                else -> downloads?.toggle(message.rowId)
             }
         }
     }

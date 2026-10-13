@@ -72,10 +72,16 @@ class MediaSender(
 
     init {
         // 每次打开（或切换）用户数据库：取消上一个账号的上传，继续本账号上次没传完的
+        // 只在数据库真的换了（切换账号、退出登录）时取消：首次收到的就是当前数据库，此时可能已有刚开始的上传
+        val initial = databases.database.value
         scope.launch {
+            var previous = initial
             databases.database.collect { db ->
-                jobs.values.forEach { it.cancel() }
-                jobs.clear()
+                if (db !== previous) {
+                    previous = db
+                    jobs.values.forEach { it.cancel() }
+                    jobs.clear()
+                }
                 if (db != null) resumeUploads(db)
             }
         }

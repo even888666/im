@@ -51,10 +51,16 @@ class FileDownloads(
     private val jobs = ConcurrentHashMap<Long, Job>()
 
     init {
+        // 只在数据库真的换了（切换账号、退出登录）时取消：首次收到的就是当前数据库，此时可能已有刚开始的下载
+        val initial = databases.database.value
         scope.launch {
+            var previous = initial
             databases.database.collect { db ->
-                jobs.values.forEach { it.cancel() }
-                jobs.clear()
+                if (db !== previous) {
+                    previous = db
+                    jobs.values.forEach { it.cancel() }
+                    jobs.clear()
+                }
                 if (db != null) pauseInterrupted(db)
             }
         }
@@ -173,7 +179,8 @@ class FileDownloads(
         try {
             val dao = db.mediaFileDao()
             val rowIds = dao.messagesInState(MediaFileEntity.STATE_DOWNLOADING)
-            rowIds.forEach { rowId ->
+            // 本次运行中正在下载的不动
+            rowIds.filterNot(::isDownloading).forEach { rowId ->
                 dao.get(rowId, MediaFileEntity.ROLE_ORIGINAL)?.let { dao.setState(it.id, MediaFileEntity.STATE_NOT_DOWNLOADED, it.progress) }
             }
             if (rowIds.isNotEmpty()) log.info("上次未完成的下载改为已暂停：{} 个", rowIds.size)

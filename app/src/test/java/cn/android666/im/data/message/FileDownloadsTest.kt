@@ -209,6 +209,41 @@ class FileDownloadsTest {
         assertThat(downloader.calls).isEqualTo(0)
     }
 
+    /** 创建后立刻开始下载（初始化中的数据库订阅还没运行）：下载不被取消 */
+    @Test
+    fun toggleRightAfterCreate_notCanceled() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val newHolder = UserDatabaseHolder {
+            Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), ImDatabase::class.java)
+                .setQueryCoroutineContext(dispatcher)
+                .allowMainThreadQueries()
+                .build()
+        }
+        holder = newHolder
+        val db = newHolder.open("10001")
+        val row = insertFile(db)
+        val downloads = FileDownloads(newHolder, downloader, { temp.newFolder("f") }, backgroundScope, dispatcher)
+
+        downloads.toggle(row)
+        runCurrent()
+        assertThat(db.mediaFileDao().get(row, MediaFileEntity.ROLE_ORIGINAL)!!.state).isEqualTo(MediaFileEntity.STATE_DONE)
+    }
+
+    /** 切换账号：正在进行的下载被取消 */
+    @Test
+    fun accountSwitch_cancelsDownload() = runTest {
+        val rig = rig()
+        val row = insertFile(rig.db)
+        downloader.gate = CompletableDeferred()
+        rig.downloads.toggle(row)
+        runCurrent()
+        assertThat(rig.downloads.isDownloading(row)).isTrue()
+
+        holder!!.open("10002")
+        runCurrent()
+        assertThat(rig.downloads.isDownloading(row)).isFalse()
+    }
+
     @Test
     fun targetFor_sameUrlSameDir_safeName() {
         val root = File("/r")

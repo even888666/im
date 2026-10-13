@@ -12,6 +12,7 @@ import cn.android666.im.core.common.ServerClock
 import cn.android666.im.core.common.UuidIdGenerator
 import cn.android666.im.core.database.ImDatabase
 import cn.android666.im.core.database.UserDatabaseHolder
+import cn.android666.im.core.database.entity.MediaFileEntity
 import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.media.ImportedFile
 import cn.android666.im.core.media.MediaImporter
@@ -22,7 +23,9 @@ import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.file.Downloader
 import cn.android666.im.data.file.MediaCache
+import cn.android666.im.data.file.UploadFailedException
 import cn.android666.im.data.message.MediaSender
+import cn.android666.im.data.message.FileDownloads
 import cn.android666.im.data.message.MessageJson
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.MessageState
@@ -100,6 +103,9 @@ class ChatViewModelMediaTest {
     fun tearDown() = holder.close()
 
     private val recorder = FakeVoiceRecorder()
+
+    /** 下载的文件目录 */
+    private val filesRoot: File by lazy { temp.newFolder("files") }
     private val player = FakeVoicePlayer()
 
     /** 被测对象 */
@@ -123,10 +129,11 @@ class ChatViewModelMediaTest {
             override fun nowMillis() = testScheduler.currentTime
             override fun elapsedMillis() = testScheduler.currentTime
         }
+        val downloads = FileDownloads(holder, FakeVoiceDownloader(), { filesRoot }, backgroundScope, mainDispatcherRule.testDispatcher)
         return ChatViewModel(
             BOB, ConversationKind.SINGLE, messages, conversations, readMarkers, retractions, OrgRepository(client, holder, clock),
             media = media, importer = importer, voiceRecorder = recorder, voiceDir = temp.newFolder("voice"),
-            voicePlayback = playback, clock = vmClock,
+            voicePlayback = playback, clock = vmClock, downloads = downloads,
         )
     }
 
@@ -214,7 +221,7 @@ class ChatViewModelMediaTest {
     @Test
     fun resend_failedUpload_reuploads() = runTest(mainDispatcherRule.testDispatcher) {
         client.login(Credential("10001", "x"))
-        uploader.failures += cn.android666.im.data.file.UploadFailedException("HTTP 500")
+        uploader.failures += UploadFailedException("HTTP 500")
         val vm = newVm()
         vm.sendImages(listOf(Uri.parse("content://x/a")), original = false)
         runCurrent()
@@ -314,6 +321,82 @@ class ChatViewModelMediaTest {
         assertThat(vm.playingVoice.value).isNull()
         assertThat(player.current).isNull()
         vm.onVoiceAbort()
+    }
+
+    /** 选择文件发送：原名与类型来自导入结果；副本被移走 */
+    @Test
+    fun sendFiles_sent() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+
+        vm.sendFiles(listOf(Uri.parse("content://x/report")))
+        runCurrent()
+
+        val message = db.messageDao().last(BOB)!!
+        assertThat(message.type).isEqualTo("file")
+        val content = MessageJson.decodeContent(message.type, message.contentJson) as MessageContent.File
+        assertThat(content.file.name).isEqualTo("report.png")
+        assertThat(content.file.mime).isEqualTo("image/png")
+        assertThat(importer.copies.none { it.exists() }).isTrue()
+    }
+
+    /** 文件超过上限：提示，不写入 */
+    @Test
+    fun sendFiles_tooLarge() = runTest(mainDispatcherRule.testDispatcher) {
+        uploader.limit = 0
+        val vm = newVm()
+        vm.events.test {
+            vm.sendFiles(listOf(Uri.parse("content://x/report")))
+            runCurrent()
+            assertThat(awaitItem()).isEqualTo(ChatEvent.FileTooLarge(0))
+        }
+        assertThat(db.messageDao().last(BOB)).isNull()
+    }
+
+    /** 收到的文件：未下载时点击下载，下载完成后点击打开 */
+    @Test
+    fun openFile_downloadThenOpen() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+        val content = MessageContent.File(FileInfo("https://h/r.pdf", "r.pdf", 2, "application/pdf"))
+        val row = db.messageDao().insert(
+            MessageEntity(
+                msgId = "f", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "file",
+                body = "[文件] r.pdf", contentJson = MessageJson.encodeContent(content), status = MessageEntity.STATUS_RECEIVED, serverTime = 1,
+            ),
+        )
+        vm.openFile(vm.items.asSnapshot().filterIsInstance<ChatListItem.Message>().single().message)
+        runCurrent()
+        val done = db.mediaFileDao().get(row, MediaFileEntity.ROLE_ORIGINAL)!!
+        assertThat(done.state).isEqualTo(MediaFileEntity.STATE_DONE)
+
+        vm.events.test {
+            vm.openFile(vm.items.asSnapshot().filterIsInstance<ChatListItem.Message>().single().message)
+            runCurrent()
+            assertThat(awaitItem()).isEqualTo(ChatEvent.OpenFile(done.localPath!!, "application/pdf"))
+        }
+    }
+
+    /** 已过期：提示 */
+    @Test
+    fun openFile_expired_toast() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+        val content = MessageContent.File(FileInfo("https://h/r.pdf", "r.pdf", 2, "application/pdf"))
+        val row = db.messageDao().insert(
+            MessageEntity(
+                msgId = "f", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "file",
+                body = "[文件] r.pdf", contentJson = MessageJson.encodeContent(content), status = MessageEntity.STATUS_RECEIVED, serverTime = 1,
+            ),
+        )
+        db.mediaFileDao().upsert(
+            MediaFileEntity(
+                msgRowId = row, role = MediaFileEntity.ROLE_ORIGINAL,
+                state = MediaFileEntity.STATE_EXPIRED,
+            ),
+        )
+        vm.events.test {
+            vm.openFile(vm.items.asSnapshot().filterIsInstance<ChatListItem.Message>().single().message)
+            runCurrent()
+            assertThat(awaitItem()).isEqualTo(ChatEvent.Toast(R.string.chat_file_expired))
+        }
     }
 
     /** 假的下载：写入目标文件 */

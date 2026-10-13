@@ -79,6 +79,34 @@ class ChatAdapterTest {
         localMain.delete()
     }
 
+    /** 文件消息的状态文字 */
+    @Test
+    fun fileStatusText() {
+        val info = FileInfo("https://h/a.pdf", "a.pdf", 1_258_291, "application/pdf")
+        val local = File.createTempFile("file", ".pdf")
+        fun msg(outgoing: Boolean, media: LocalMedia?) = ChatMessage(
+            rowId = 1, msgId = "m", conversationId = "c", outgoing = outgoing, senderJid = "s", senderName = null,
+            senderAvatarHash = "", content = MessageContent.File(info), body = "[文件] a.pdf", state = MessageState.SENT, errorCode = null,
+            serverTime = 0, replyToMsgId = null, retracted = false, retractedBy = null, media = media,
+        )
+        fun media(status: MediaStatus, progress: Int = 0, path: String? = null) = LocalMedia(null, path, status, progress)
+        fun text(outgoing: Boolean, media: LocalMedia?) = ChatAdapter.fileStatusText(context, msg(outgoing, media), info)
+
+        assertThat(text(false, null)).isEqualTo("1.2 MB · 未下载")
+        assertThat(text(false, media(MediaStatus.DOWNLOADING, 40))).isEqualTo("1.2 MB · 下载中 40%")
+        assertThat(text(false, media(MediaStatus.NOT_DOWNLOADED, 35))).isEqualTo("1.2 MB · 已暂停 35%，点击继续")
+        assertThat(text(false, media(MediaStatus.DONE, 100, local.path))).isEqualTo("1.2 MB · 已下载")
+        // 已下载的文件被删除
+        assertThat(text(false, media(MediaStatus.DONE, 100, "/none/a.pdf"))).isEqualTo("1.2 MB · 未下载")
+        assertThat(text(false, media(MediaStatus.EXPIRED))).isEqualTo("1.2 MB · 文件已过期或已被清理")
+        assertThat(text(false, media(MediaStatus.FAILED))).isEqualTo("1.2 MB · 下载失败，点击重试")
+        assertThat(text(true, media(MediaStatus.UPLOADING, 20, local.path))).isEqualTo("1.2 MB · 上传中 20%")
+        assertThat(text(true, media(MediaStatus.DONE, 100, local.path))).isEqualTo("1.2 MB")
+        val notUploaded = info.copy(url = "")
+        assertThat(ChatAdapter.fileStatusText(context, msg(true, media(MediaStatus.FAILED)), notUploaded)).isEqualTo("1.2 MB · 上传失败")
+        local.delete()
+    }
+
     @Test
     fun timeHeaderText() {
         assertThat(ChatAdapter.timeHeaderText(context, ChatTimeLabel(TimeLabel.Today(9, 5), 9, 5))).isEqualTo("09:05")

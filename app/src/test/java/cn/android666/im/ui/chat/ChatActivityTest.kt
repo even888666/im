@@ -193,6 +193,34 @@ class ChatActivityTest {
         }
     }
 
+    /** 5.6 收到的文件：显示文件卡片（名称、大小与状态、类型标签） */
+    @Test
+    fun fileMessage_shown() {
+        runBlocking {
+            val content = MessageContent.File(FileInfo("https://im.example.com/upload/r.pdf", "季度报告.pdf", 1_258_291, "application/pdf"))
+            app.container.userDatabaseHolder.require().messageDao().insert(
+                MessageEntity(
+                    msgId = "file", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "file",
+                    body = "[文件] 季度报告.pdf", contentJson = MessageJson.encodeContent(content), status = MessageEntity.STATUS_RECEIVED,
+                    serverTime = 1,
+                ),
+            )
+        }
+        val intent = ChatActivity.intent(app, BOB, ConversationKind.SINGLE)
+        ActivityScenario.launch<ChatActivity>(intent).use { scenario ->
+            lateinit var list: RecyclerView
+            scenario.onActivity { list = it.findViewById(R.id.list) }
+            waitUntil { list.findViewHolderForAdapterPosition(0)?.itemView?.findViewById<android.view.View>(R.id.fileBox)?.isVisible == true }
+            scenario.onActivity {
+                val item = list.findViewHolderForAdapterPosition(0)!!.itemView
+                assertThat(item.findViewById<TextView>(R.id.bubble).isVisible).isFalse()
+                assertThat(item.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("季度报告.pdf")
+                assertThat(item.findViewById<TextView>(R.id.status).text.toString()).isEqualTo("1.2 MB · 未下载")
+                assertThat(item.findViewById<TextView>(R.id.badge).text.toString()).isEqualTo("pdf")
+            }
+        }
+    }
+
     private companion object {
         const val BOB = "10002@im.example.com"
     }

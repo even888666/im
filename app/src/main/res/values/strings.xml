@@ -194,6 +194,19 @@
     <string name="chat_keyboard_input">键盘输入</string>
     <string name="chat_voice">语音</string>
     <string name="chat_voice_unplayed">未听</string>
+    <!-- 文件消息（开发计划 5.6） -->
+    <string name="chat_pick_file">文件</string>
+    <string name="chat_file_status">%1$s · %2$s</string>
+    <string name="chat_file_not_downloaded">未下载</string>
+    <string name="chat_file_paused">已暂停 %d%%，点击继续</string>
+    <string name="chat_file_downloading">下载中 %d%%</string>
+    <string name="chat_file_uploading">上传中 %d%%</string>
+    <string name="chat_file_downloaded">已下载</string>
+    <string name="chat_file_failed">下载失败，点击重试</string>
+    <string name="chat_file_upload_failed">上传失败</string>
+    <string name="chat_file_expired">文件已过期或已被清理</string>
+    <string name="chat_file_no_app">没有可以打开此文件的应用</string>
+    <string name="chat_file_open_with">打开方式</string>
     <string name="preview_save">保存</string>
     <string name="preview_saved">已保存到相册</string>
     <string name="preview_save_failed">保存失败</string>

@@ -329,6 +329,36 @@ class MediaSenderTest {
         assertThat(content.file.url).isEqualTo("https://im.example.com/upload/old.jpg")
     }
 
+    /** 创建后立刻发送（初始化中的数据库订阅还没运行）：上传不被取消 */
+    @Test
+    fun sendRightAfterCreate_notCanceled() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val newHolder = UserDatabaseHolder {
+            Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), ImDatabase::class.java)
+                .setQueryCoroutineContext(dispatcher)
+                .allowMainThreadQueries()
+                .build()
+        }
+        holder = newHolder
+        newHolder.open("10001")
+        client.login(Credential("10001", "x"))
+        val clock = object : Clock {
+            override fun nowMillis() = testScheduler.currentTime
+            override fun elapsedMillis() = testScheduler.currentTime
+        }
+        val repository = MessageRepository(newHolder, SendQueue(client, newHolder, backgroundScope, clock), ServerClock(clock), ids) { "10001@im.example.com" }
+        val workDir = temp.newFolder("w")
+        val sender = MediaSender(
+            client, newHolder, repository, uploader, FakeImageProcessor(),
+            workDir = { workDir }, cache = { null }, scope = backgroundScope, io = dispatcher,
+        )
+
+        sender.sendFile(BOB, ConversationEntity.TYPE_SINGLE, temp.newFile(), "a.txt", "text/plain")
+        runCurrent()
+        assertThat(uploader.uploaded).hasSize(1)
+        assertThat(client.sentMessages).hasSize(1)
+    }
+
     /** 还没上传完的图片不能转发 */
     @Test
     fun forward_skipsPendingUpload() = runTest {

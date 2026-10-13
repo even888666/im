@@ -1,9 +1,11 @@
 package cn.android666.im.ui.chat
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.drawable.AnimationDrawable
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.paging.PagingDataAdapter
@@ -11,8 +13,12 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import cn.android666.im.R
 import cn.android666.im.core.media.ImageSizing
+import cn.android666.im.core.xmpp.extension.msg.FileInfo
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.data.file.FileCategory
+import cn.android666.im.data.file.FileTypes
 import cn.android666.im.data.message.ChatMessage
+import cn.android666.im.data.message.MediaStatus
 import cn.android666.im.data.message.MessageState
 import cn.android666.im.data.message.ReplyPreview
 import cn.android666.im.data.message.SendError
@@ -21,6 +27,7 @@ import cn.android666.im.databinding.ItemChatInBinding
 import cn.android666.im.databinding.ItemChatNoticeBinding
 import cn.android666.im.databinding.ItemChatOutBinding
 import cn.android666.im.databinding.ItemChatTimeBinding
+import cn.android666.im.databinding.ViewChatFileBinding
 import cn.android666.im.databinding.ViewChatImageBinding
 import cn.android666.im.databinding.ViewChatVoiceBinding
 import cn.android666.im.ui.conversation.ConversationAdapter
@@ -31,7 +38,7 @@ import java.io.File
 
 /**
  * 聊天页消息列表（开发计划 4.8）：时间分隔、对方的消息、本人的消息、系统提示（撤回）。
- * 图片消息显示缩略图（5.4）、语音消息显示语音气泡（5.5）；其余非文本消息暂时显示降级文本（如"[文件] 报告.pdf"），见 M5 后续功能。
+ * 图片消息显示缩略图（5.4）、语音消息显示语音气泡（5.5）、文件消息显示文件卡片（5.6）；其余非文本消息暂时显示降级文本（如"[视频]"）。
  *
  * @property showReadState 是否显示"未读 / 已读"（单聊显示；文件传输助手不显示；群聊的已读人数见 M6）
  * @property now 当前时间（毫秒），计算时间分隔的文字
@@ -39,7 +46,7 @@ import java.io.File
  * @property onLongClick 长按消息气泡（操作菜单）
  * @property selfJid 本人 bare JID（引用本人的消息时显示"我"）
  * @property onToggle 多选模式中点击消息（切换选中）
- * @property onOpen 点击消息气泡（合并转发的聊天记录、图片等需要打开的消息）
+ * @property onOpen 点击消息气泡（合并转发的聊天记录、图片、文件等需要打开的消息）
  * @property onVoice 点击语音消息（播放 / 停止）
  */
 class ChatAdapter(
@@ -168,6 +175,7 @@ class ChatAdapter(
         }
         bindImage(b.imageBox, message)
         bindVoice(b.voiceBox, message, outgoing = false)
+        bindFile(b.fileBox, message)
         b.bubble.isVisible = !showsMedia(message)
         bindQuote(b.quote, message)
     }
@@ -189,6 +197,7 @@ class ChatAdapter(
         }
         bindImage(b.imageBox, message)
         bindVoice(b.voiceBox, message, outgoing = true)
+        bindFile(b.fileBox, message)
         b.bubble.isVisible = !showsMedia(message)
         bindQuote(b.quote, message)
         b.sending.isVisible = message.state == MessageState.SENDING
@@ -320,6 +329,34 @@ class ChatAdapter(
     }
 
     /**
+     * 文件消息（开发计划 5.6）：文件名、大小与状态（未下载 / 下载中 / 已暂停 / 已下载 / 已过期 / 上传中）、类型标签、进度条。
+     * 点击打开或下载（多选模式中为切换选中），长按弹出操作菜单。
+     *
+     * @param box 文件布局
+     * @param message 消息
+     */
+    private fun bindFile(box: ViewChatFileBinding, message: ChatMessage) {
+        val file = (message.content as? MessageContent.File)?.file
+        box.root.isVisible = file != null
+        if (file == null) return
+        val context = box.root.context
+        box.name.text = file.name
+        box.status.text = fileStatusText(context, message, file)
+        val category = FileTypes.category(file.name, file.mime)
+        box.badge.text = FileTypes.extension(file.name).take(BADGE_MAX_CHARS).ifEmpty { "?" }
+        box.badge.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(context, badgeColor(category)))
+        val status = message.media?.status
+        val transferring = status == MediaStatus.UPLOADING || status == MediaStatus.DOWNLOADING
+        box.progress.isVisible = transferring
+        if (transferring) box.progress.setProgressCompat(message.media?.progress ?: 0, false)
+        box.root.setOnClickListener { if (selection == null) onOpen(message) else onToggle(message) }
+        box.root.setOnLongClickListener {
+            if (selection == null) onLongClick(message)
+            selection == null
+        }
+    }
+
+    /**
      * 显示引用的原消息。
      *
      * @param view 引用预览
@@ -360,7 +397,60 @@ class ChatAdapter(
          * @return 图片、语音为 true
          */
         fun showsMedia(message: ChatMessage): Boolean =
-            message.content is MessageContent.Image || message.content is MessageContent.Voice
+            message.content is MessageContent.Image || message.content is MessageContent.Voice || message.content is MessageContent.File
+
+        /** 文件类型标签最多显示的字符数 */
+        private const val BADGE_MAX_CHARS = 4
+
+        /**
+         * 文件消息的状态文字："1.2 MB · 未下载"、"1.2 MB · 下载中 40%"等；本人发出、本地有文件时只显示大小。
+         *
+         * @param context Context
+         * @param message 消息
+         * @param file 文件描述
+         * @return 文字
+         */
+        fun fileStatusText(context: Context, message: ChatMessage, file: FileInfo): String {
+            val size = FileTypes.formatSize(file.size)
+            val media = message.media
+            val progress = media?.progress ?: 0
+            val local = media?.filePath?.let(::File)?.exists() == true
+            val state = when (media?.status) {
+                MediaStatus.UPLOADING -> context.getString(R.string.chat_file_uploading, progress)
+                MediaStatus.DOWNLOADING -> context.getString(R.string.chat_file_downloading, progress)
+                MediaStatus.EXPIRED -> context.getString(R.string.chat_file_expired)
+                MediaStatus.FAILED -> context.getString(if (message.outgoing && file.url.isEmpty()) R.string.chat_file_upload_failed else R.string.chat_file_failed)
+                MediaStatus.DONE -> if (!local) {
+                    context.getString(R.string.chat_file_not_downloaded)
+                } else if (message.outgoing) {
+                    null
+                } else {
+                    context.getString(R.string.chat_file_downloaded)
+                }
+                else -> if (progress > 0) context.getString(R.string.chat_file_paused, progress) else context.getString(R.string.chat_file_not_downloaded)
+            }
+            return if (state == null) size else context.getString(R.string.chat_file_status, size, state)
+        }
+
+        /**
+         * 文件类型标签的颜色。
+         *
+         * @param category 文件大类
+         * @return 颜色资源
+         */
+        fun badgeColor(category: FileCategory): Int = when (category) {
+            FileCategory.PDF -> R.color.file_pdf
+            FileCategory.WORD -> R.color.file_word
+            FileCategory.EXCEL -> R.color.file_excel
+            FileCategory.POWERPOINT -> R.color.file_powerpoint
+            FileCategory.ARCHIVE -> R.color.file_archive
+            FileCategory.TEXT -> R.color.file_text
+            FileCategory.IMAGE -> R.color.file_image
+            FileCategory.AUDIO -> R.color.file_audio
+            FileCategory.VIDEO -> R.color.file_video
+            FileCategory.APK -> R.color.file_apk
+            FileCategory.OTHER -> R.color.file_other
+        }
 
         /** 图片消息的最大边长（dp） */
         private const val IMAGE_MAX_DP = 150

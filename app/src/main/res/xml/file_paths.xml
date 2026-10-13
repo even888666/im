@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- FileProvider 可共享的目录（开发计划 5.4）：相机应用把照片写入 {cacheDir}/camera -->
+<!--
+    FileProvider 可共享的目录：
+    - 相机应用把照片写入 {cacheDir}/camera（开发计划 5.4）；
+    - 用其他应用打开文件消息（开发计划 5.6）：下载的文件在 {filesDir}/files，本人发出的在 {cacheDir}/media。
+-->
 <paths>
     <cache-path
         name="camera"
         path="camera/" />
+    <cache-path
+        name="media"
+        path="media/" />
+    <files-path
+        name="files"
+        path="files/" />
 </paths>

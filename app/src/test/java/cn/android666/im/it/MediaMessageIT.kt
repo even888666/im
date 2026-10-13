@@ -14,6 +14,7 @@ import cn.android666.im.core.common.UuidIdGenerator
 import cn.android666.im.core.database.ImDatabase
 import cn.android666.im.core.database.UserDatabaseHolder
 import cn.android666.im.core.database.entity.ConversationEntity
+import cn.android666.im.core.database.entity.MediaFileEntity
 import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.media.ImageCompressor
 import cn.android666.im.core.network.HttpClients
@@ -25,7 +26,9 @@ import cn.android666.im.core.xmpp.smack.SmackXmppClient
 import cn.android666.im.data.file.FileDownloader
 import cn.android666.im.data.file.FileUploader
 import cn.android666.im.data.file.MediaCache
+import cn.android666.im.data.message.FileDownloads
 import cn.android666.im.data.message.MediaSender
+import cn.android666.im.data.message.MessageJson
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.testing.IntegrationTests
@@ -223,6 +226,62 @@ class MediaMessageIT {
         assertThat(voice.size).isEqualTo(bytes.size.toLong())
         val downloaded = FileDownloader(http).download(voice.url, File(temp.root, "v.m4a"))
         assertThat(downloaded.readBytes()).isEqualTo(bytes)
+    }
+
+    /** 文件：原名、类型、SHA-256 随消息到达；接收方用 FileDownloads 下载到文件目录并校验 */
+    @Test
+    fun sendFile_receivedAndDownloaded(): Unit = runBlocking {
+        val a = login(5)
+        val b = login(6)
+        val sender = mediaSender(a, temp.newFolder("cache"))
+        val bytes = ByteArray(200_000) { (it % 251).toByte() }
+        val source = temp.newFile("import").apply { writeBytes(bytes) }
+
+        val received = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(TIMEOUT) {
+                b.incomingMessages.map { MessageCodec.parse(it) }.first { it.message.content is MessageContent.File }
+            }
+        }
+        val saved = sender.sendFile(jidB, ConversationEntity.TYPE_SINGLE, source, "季度报告.pdf", "application/pdf")
+
+        val message = received.await().message
+        assertThat(message.msgId).isEqualTo(saved.msgId)
+        assertThat(message.body).isEqualTo("[文件] 季度报告.pdf")
+        val info = (message.content as MessageContent.File).file
+        assertThat(info.name).isEqualTo("季度报告.pdf")
+        assertThat(info.size).isEqualTo(bytes.size.toLong())
+        assertThat(info.sha256).isNotNull()
+
+        // 接收方（10006 的内存库）写入这条消息后用 FileDownloads 下载：校验 SHA-256，保存为原名
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val holderB = UserDatabaseHolder { Room.inMemoryDatabaseBuilder(context, ImDatabase::class.java).build() }
+        try {
+            val dbB = holderB.open(ItServer.user(6))
+            val rowId = dbB.messageDao().insert(
+                MessageEntity(
+                    msgId = message.msgId!!, conversationId = jidA, senderJid = jidA, direction = MessageEntity.DIRECTION_IN,
+                    type = "file", body = message.body!!, contentJson = MessageJson.encodeContent(message.content!!),
+                    status = MessageEntity.STATUS_RECEIVED, serverTime = 1,
+                ),
+            )
+            val filesRoot = temp.newFolder("files")
+            val downloads = FileDownloads(holderB, FileDownloader(http), { filesRoot }, scope, Dispatchers.IO)
+            downloads.toggle(rowId)
+            val record = withTimeout(TIMEOUT) {
+                var r = dbB.mediaFileDao().get(rowId, MediaFileEntity.ROLE_ORIGINAL)
+                while (r?.state != MediaFileEntity.STATE_DONE) {
+                    check(r?.state != MediaFileEntity.STATE_FAILED && r?.state != MediaFileEntity.STATE_EXPIRED) { "下载失败：$r" }
+                    delay(50)
+                    r = dbB.mediaFileDao().get(rowId, MediaFileEntity.ROLE_ORIGINAL)
+                }
+                r
+            }
+            val downloaded = File(record.localPath!!)
+            assertThat(downloaded.name).isEqualTo("季度报告.pdf")
+            assertThat(downloaded.readBytes()).isEqualTo(bytes)
+        } finally {
+            holderB.close()
+        }
     }
 
     private companion object {

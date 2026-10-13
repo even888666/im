@@ -90,6 +90,7 @@ class ChatActivity : AppCompatActivity() {
                     voiceDir = File(cacheDir, VOICE_DIR),
                     voicePlayback = container.voicePlayback,
                     settings = container.appSettingsStore,
+                    downloads = container.fileDownloads,
                 )
             }
         }
@@ -247,6 +248,7 @@ class ChatActivity : AppCompatActivity() {
                     binding.list.scrollToPosition(0)
                 }
                 is ChatEvent.Toast -> Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show()
+                is ChatEvent.OpenFile -> openWithOtherApp(File(event.path), event.mime)
                 is ChatEvent.FileTooLarge ->
                     Toast.makeText(this, getString(R.string.chat_file_too_large, event.maxBytes / BYTES_PER_MB), Toast.LENGTH_SHORT).show()
             }
@@ -357,6 +359,36 @@ class ChatActivity : AppCompatActivity() {
         if (uris.isNotEmpty()) confirmSendImages(uris)
     }
 
+    /** 选择文件（可多选） */
+    private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) viewModel.sendFiles(uris.take(MAX_PICK))
+    }
+
+    /**
+     * 用其他应用打开文件（FileProvider 授予临时读取权限）。
+     *
+     * @param file 本地文件
+     * @param mime MIME 类型
+     */
+    private fun openWithOtherApp(file: File, mime: String) {
+        val uri = try {
+            FileProvider.getUriForFile(this, "$packageName.files", file)
+        } catch (e: IllegalArgumentException) {
+            log.error("文件不在可共享目录中：{}", file, e)
+            Toast.makeText(this, R.string.chat_file_no_app, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val view = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, mime.ifBlank { "*/*" })
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            startActivity(Intent.createChooser(view, getString(R.string.chat_file_open_with)))
+            log.info("用其他应用打开文件：{}，类型={}", file.name, mime)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.chat_file_no_app, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     /** 拍照 */
     private val takePhoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         val file = pendingPhoto
@@ -375,10 +407,12 @@ class ChatActivity : AppCompatActivity() {
         PopupMenu(this, binding.more).apply {
             menu.add(0, MENU_ALBUM, 0, R.string.chat_pick_album)
             menu.add(0, MENU_CAMERA, 1, R.string.chat_take_photo)
+            menu.add(0, MENU_FILE, 2, R.string.chat_pick_file)
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_ALBUM -> pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     MENU_CAMERA -> launchCamera()
+                    MENU_FILE -> pickFiles.launch(arrayOf("*/*"))
                 }
                 true
             }
@@ -415,7 +449,7 @@ class ChatActivity : AppCompatActivity() {
     }
 
     /**
-     * 点击消息：合并转发打开聊天记录，图片打开大图预览。
+     * 点击消息：合并转发打开聊天记录，图片打开大图预览，文件打开或下载。
      *
      * @param message 消息
      */
@@ -436,6 +470,7 @@ class ChatActivity : AppCompatActivity() {
                     ),
                 ),
             )
+            is MessageContent.File -> viewModel.openFile(message)
             else -> Unit
         }
     }
@@ -546,6 +581,9 @@ class ChatActivity : AppCompatActivity() {
 
         /** "更多"菜单：拍照 */
         private const val MENU_CAMERA = 2
+
+        /** "更多"菜单：文件 */
+        private const val MENU_FILE = 3
 
         /** 导入的图片副本目录（缓存目录下） */
         private const val IMPORT_DIR = "import"
