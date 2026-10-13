@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.test.core.app.ApplicationProvider
+import cn.android666.im.App
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
 import org.junit.Test
@@ -25,6 +26,9 @@ class AndroidNetworkMonitorTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        // App 启动后会在后台线程懒加载创建自己的监听器并注册回调；这里先同步创建，
+        // 避免它恰好在 newMonitor() 取差集的过程中注册，导致差集里有两个回调
+        (context as App).container.networkMonitor
     }
 
     /** 被测监听器注册的回调（App 启动时也会创建一个监听器并注册回调，需排除） */

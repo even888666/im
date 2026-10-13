@@ -10,6 +10,7 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,6 +25,12 @@ class KeepAliveWorkerTest {
     @Before
     fun setUp() {
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
+    }
+
+    /** 关闭测试 WorkManager 的数据库，否则 GC 时 CloseGuard 会在后续测试的输出中报"close 未调用" */
+    @After
+    fun tearDown() {
+        WorkManagerTestInitHelper.closeWorkDatabase()
     }
 
     /** 没有保存的凭证时，巡检什么也不做，任务成功结束 */

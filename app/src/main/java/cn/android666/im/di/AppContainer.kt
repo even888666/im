@@ -9,6 +9,7 @@ import cn.android666.im.core.security.AesGcmCredentialCipher
 import cn.android666.im.core.security.AndroidKeyStoreKeyProvider
 import cn.android666.im.core.security.RootCaTrust
 import cn.android666.im.data.account.CredentialStore
+import cn.android666.im.data.settings.AppSettingsStore
 import cn.android666.im.data.session.AppVisibilityHandler
 import cn.android666.im.data.session.SessionManager
 import cn.android666.im.data.session.steps.AccountStatusStep
@@ -96,6 +97,9 @@ class AppContainer(context: Context) {
     val credentialStore: CredentialStore by lazy {
         CredentialStore(appContext.settingsDataStore, AesGcmCredentialCipher(AndroidKeyStoreKeyProvider()))
     }
+
+    /** 设备级设置（隐私政策同意状态等） */
+    val appSettingsStore: AppSettingsStore by lazy { AppSettingsStore(appContext.settingsDataStore) }
 
     /** 网络状态监听 */
     val networkMonitor: NetworkMonitor by lazy { AndroidNetworkMonitor(appContext) }

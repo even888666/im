@@ -30,16 +30,35 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Im">
+        <!-- 启动页：隐私政策弹窗，判断进入登录页 / 主界面 / 改密页（开发计划 2.17、2.18） -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:name=".ui.splash.SplashActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 登录页 -->
+        <activity
+            android:name=".ui.login.LoginActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 强制修改初始密码 -->
+        <activity
+            android:name=".ui.password.ChangePasswordActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 主界面（底部 Tab）；singleTask：从通知等处进入时复用已有的主界面 -->
+        <activity
+            android:name=".ui.main.MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize" />
 
         <!--
             承载 XMPP 长连接的前台服务。类型 specialUse：企业 IM 没有厂商推送，必须保持长连接才能收到消息；
