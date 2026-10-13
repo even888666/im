@@ -27,6 +27,13 @@ sealed class XmppException(message: String, cause: Throwable? = null) : Exceptio
     /** 请求在超时时间内没有响应 */
     class Timeout(cause: Throwable? = null) : XmppException("请求超时", cause)
 
+    /**
+     * 服务器的响应不符合协议格式（解析失败）。通常是客户端与服务端插件版本不匹配。
+     *
+     * @param detail 详情
+     */
+    class InvalidResponse(detail: String, cause: Throwable? = null) : XmppException("响应格式错误：$detail", cause)
+
     /** 当前未连接，无法执行操作 */
     class NotConnected(cause: Throwable? = null) : XmppException("未连接服务器", cause)
 

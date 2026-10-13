@@ -10,6 +10,8 @@ import cn.android666.im.core.xmpp.Credential
 import cn.android666.im.core.xmpp.DisconnectReason
 import cn.android666.im.core.xmpp.ServerConfig
 import cn.android666.im.core.xmpp.XmppException
+import cn.android666.im.core.xmpp.extension.account.AccountStatusRequest
+import cn.android666.im.core.xmpp.extension.account.ChangePasswordRequest
 import cn.android666.im.core.xmpp.smack.SmackXmppClient
 import cn.android666.im.testing.IntegrationTests
 import cn.android666.im.testing.ItServer
@@ -104,6 +106,41 @@ class SmackXmppClientIT {
         assertThat(caps.maxUploadFileSize).isEqualTo(104_857_600L)
         // 自研插件尚未开发（开发计划 M3），对应功能不可用
         assertThat(caps.org).isFalse()
+    }
+
+    /** 2.11：通过自定义 IQ 修改密码（XEP-0077），之后用新密码登录，再改回原密码 */
+    @Test
+    fun changePassword_viaSendIq_thenLoginWithNewPassword() = runBlocking {
+        val user = ItServer.user(9)
+        val newPassword = "Abc${System.currentTimeMillis() % 100_000}x9"
+        val client = newClient()
+        client.login(Credential(user, ItServer.testUserPassword))
+
+        client.sendIq(ChangePasswordRequest(user, newPassword))
+        client.logout()
+
+        val relogin = newClient()
+        relogin.login(Credential(user, newPassword))
+        // 改回原密码，保证测试可重复运行
+        relogin.sendIq(ChangePasswordRequest(user, ItServer.testUserPassword))
+        // 日志中不能出现新旧密码（ChangePasswordRequest 的内容是自定义 IQ，由 Smack 调试器记录时需脱敏）
+        val logs = synchronized(stanzaLogs) { stanzaLogs.toList() }
+        assertThat(logs.none { it.contains(newPassword) }).isTrue()
+    }
+
+    /**
+     * 2.10：查询账号状态。组织架构插件尚未开发（开发计划 M3），Openfire 不认识该命名空间，
+     * 返回 stanza error，映射为 XmppException.StanzaError。插件完成后改为验证 mustChangePassword。
+     */
+    @Test
+    fun accountStatus_withoutOrgPlugin_stanzaError() = runBlocking {
+        val client = newClient()
+        client.login(credential())
+
+        val e = runCatching { client.sendIq(AccountStatusRequest()) }.exceptionOrNull()
+
+        assertThat(e).isInstanceOf(XmppException.StanzaError::class.java)
+        assertThat((e as XmppException.StanzaError).condition).isAnyOf("service-unavailable", "feature-not-implemented")
     }
 
     /** 未登录时调用请求类方法抛出 NotConnected */

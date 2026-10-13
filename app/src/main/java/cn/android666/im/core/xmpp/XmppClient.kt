@@ -1,5 +1,6 @@
 package cn.android666.im.core.xmpp
 
+import cn.android666.im.core.xmpp.iq.IqRequest
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -56,6 +57,16 @@ interface XmppClient {
      * @throws XmppException 未连接、超时或服务器返回错误
      */
     suspend fun discoverCapabilities(): ServerCapabilities
+
+    /**
+     * 发送自定义 IQ 并等待结果（协议规范中的所有自定义 IQ，Android工程架构.md §4.2）。
+     *
+     * @param request 请求
+     * @return 解析后的结果
+     * @throws XmppException 未连接、超时、服务器返回错误（[XmppException.StanzaError]，含自定义错误码）、
+     * 响应格式错误（[XmppException.InvalidResponse]）
+     */
+    suspend fun <T> sendIq(request: IqRequest<T>): T
 
     /**
      * 立即检测连接是否仍然可用（发送 XEP-0199 ping，10 秒内无响应视为失效）。

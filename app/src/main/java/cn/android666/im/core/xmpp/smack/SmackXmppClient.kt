@@ -13,6 +13,8 @@ import cn.android666.im.core.xmpp.ServerConfig
 import cn.android666.im.core.xmpp.ServerTime
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
+import cn.android666.im.core.xmpp.iq.IqRequest
+import cn.android666.im.core.xmpp.iq.XmlNode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +24,7 @@ import kotlinx.coroutines.withContext
 import org.jivesoftware.smack.ConnectionConfiguration.SecurityMode
 import org.jivesoftware.smack.ConnectionListener
 import org.jivesoftware.smack.ReconnectionManager
+import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smack.sm.predicates.Predicate
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration
@@ -30,6 +33,7 @@ import org.jivesoftware.smackx.disco.ServiceDiscoveryManager
 import org.jivesoftware.smackx.httpfileupload.HttpFileUploadManager
 import org.jivesoftware.smackx.ping.PingManager
 import org.jivesoftware.smackx.time.EntityTimeManager
+import org.jxmpp.jid.impl.JidCreate
 import java.net.InetAddress
 import javax.net.ssl.X509TrustManager
 import kotlin.system.measureTimeMillis
@@ -187,6 +191,23 @@ class SmackXmppClient(
             .onFailure { log.warn("发现文件上传服务失败", it) }
             .getOrNull()
         ServerCapabilities(features, maxFileSize)
+    }
+
+    override suspend fun <T> sendIq(request: IqRequest<T>): T = request("IQ ${request.namespace}#${request.elementName}") { current ->
+        val iq = RawIq(request).apply { to = JidCreate.from(request.to ?: serverConfig.domain) }
+        val response: IQ = current.sendIqRequestAndWaitForResponse(iq)
+        // 自定义命名空间没有注册解析器，Smack 返回 UnparsedIQ；空结果没有子元素
+        val child = response.childElementName?.let { response.childElementXML.toString() }
+        val node = try {
+            child?.let { XmlNode.parse(it) }
+        } catch (e: IllegalArgumentException) {
+            throw XmppException.InvalidResponse("${request.elementName} 结果无法解析", e)
+        }
+        try {
+            request.parseResult(node)
+        } catch (e: IllegalArgumentException) {
+            throw XmppException.InvalidResponse(e.message ?: request.elementName, e)
+        }
     }
 
     override suspend fun checkAlive(): Boolean = withContext(dispatchers.io) {

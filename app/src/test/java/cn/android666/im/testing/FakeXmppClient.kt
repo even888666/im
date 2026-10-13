@@ -8,6 +8,8 @@ import cn.android666.im.core.xmpp.ServerCapabilities
 import cn.android666.im.core.xmpp.ServerTime
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.XmppException
+import cn.android666.im.core.xmpp.iq.IqRequest
+import cn.android666.im.core.xmpp.iq.XmlNode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -80,6 +82,22 @@ class FakeXmppClient : XmppClient {
             nextRequestError = null
             throw it
         }
+    }
+
+    /** 已发送的 IQ 请求 */
+    val sentIqs = mutableListOf<IqRequest<*>>()
+
+    /**
+     * IQ 应答器：根据请求返回结果子元素的 XML（null 表示空结果），或抛出 XmppException 模拟服务器错误。
+     * 默认返回空结果。
+     */
+    var iqResponder: (IqRequest<*>) -> String? = { null }
+
+    override suspend fun <T> sendIq(request: IqRequest<T>): T {
+        calls += "iq:${request.elementName}"
+        sentIqs += request
+        val xml = iqResponder(request)
+        return request.parseResult(xml?.let { XmlNode.parse(it) })
     }
 
     /** 依次用于每次 [checkAlive] 的结果，未预设时返回 true；返回 false 时模拟连接失效并断开 */
