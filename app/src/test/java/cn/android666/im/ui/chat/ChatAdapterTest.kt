@@ -6,6 +6,7 @@ import cn.android666.im.R
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.data.message.ChatMessage
 import cn.android666.im.data.message.MessageState
+import cn.android666.im.data.message.ReplyPreview
 import cn.android666.im.ui.conversation.TimeLabel
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -47,5 +48,15 @@ class ChatAdapterTest {
         assertThat(ChatAdapter.timeHeaderText(context, ChatTimeLabel(TimeLabel.ThisYear(10, 6), 8, 30))).isEqualTo("10月6日 08:30")
         assertThat(ChatAdapter.timeHeaderText(context, ChatTimeLabel(TimeLabel.Older(2025, 1, 2), 8, 30)))
             .isEqualTo("2025年1月2日 08:30")
+    }
+
+    @Test
+    fun quoteText() {
+        val self = "10001@im.example.com"
+        assertThat(ChatAdapter.quoteText(context, ReplyPreview.Found("10002@im.example.com", "李四", "原文"), self)).isEqualTo("李四：原文")
+        assertThat(ChatAdapter.quoteText(context, ReplyPreview.Found("10002@im.example.com", null, "原文"), self)).isEqualTo("10002：原文")
+        assertThat(ChatAdapter.quoteText(context, ReplyPreview.Found(self, "张三", "我说的"), self)).isEqualTo("我：我说的")
+        assertThat(ChatAdapter.quoteText(context, ReplyPreview.Retracted, self)).isEqualTo("原消息已撤回")
+        assertThat(ChatAdapter.quoteText(context, ReplyPreview.Missing, self)).isEqualTo("原消息不可见")
     }
 }

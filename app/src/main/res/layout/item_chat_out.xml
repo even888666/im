@@ -70,6 +70,25 @@
                 android:textColor="?attr/colorOnPrimaryContainer"
                 tools:text="好的，我准时参加" />
 
+            <!-- 引用的原消息（开发计划 4.15） -->
+            <TextView
+                android:id="@+id/quote"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_chat_notice"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:paddingStart="8dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="4dp"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?android:attr/textColorSecondary"
+                android:visibility="gone"
+                tools:text="李四：下午三点开会"
+                tools:visibility="visible" />
+
             <!-- 发送失败的原因（如敏感词） -->
             <TextView
                 android:id="@+id/error"

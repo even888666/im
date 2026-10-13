@@ -25,6 +25,25 @@ enum class MessageState {
     RECEIVED,
 }
 
+/** 引用回复的原消息预览（开发计划 4.15，协议规范 §8.5） */
+sealed interface ReplyPreview {
+
+    /**
+     * 原消息在本地。
+     *
+     * @property senderJid 原消息的发送方
+     * @property senderName 原消息发送方的姓名（组织架构中有时）
+     * @property text 原消息的正文 / 降级文本
+     */
+    data class Found(val senderJid: String, val senderName: String?, val text: String) : ReplyPreview
+
+    /** 原消息已撤回 */
+    data object Retracted : ReplyPreview
+
+    /** 原消息不在本地（不可见） */
+    data object Missing : ReplyPreview
+}
+
 /**
  * 聊天页中的一条消息（界面模型，与 Room 实体解耦）。
  *
@@ -43,6 +62,7 @@ enum class MessageState {
  * @property replyToMsgId 引用的原消息 ID
  * @property retracted 是否已撤回
  * @property retractedBy 撤回者 bare JID
+ * @property reply 引用的原消息预览；不是引用回复时为 null
  */
 data class ChatMessage(
     val rowId: Long,
@@ -60,6 +80,7 @@ data class ChatMessage(
     val replyToMsgId: String?,
     val retracted: Boolean,
     val retractedBy: String?,
+    val reply: ReplyPreview? = null,
 )
 
 /**
@@ -92,6 +113,12 @@ internal fun MessageWithSender.toChatMessage(): ChatMessage {
         replyToMsgId = m.replyToMsgId,
         retracted = m.retracted,
         retractedBy = m.retractedBy,
+        reply = when {
+            m.replyToMsgId == null -> null
+            replyRowId == null -> ReplyPreview.Missing
+            replyRetracted == true -> ReplyPreview.Retracted
+            else -> ReplyPreview.Found(replySenderJid.orEmpty(), replySenderName, replyBody.orEmpty())
+        },
     )
 }
 

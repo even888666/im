@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import cn.android666.im.R
 import cn.android666.im.data.message.ChatMessage
 import cn.android666.im.data.message.MessageState
+import cn.android666.im.data.message.ReplyPreview
 import cn.android666.im.databinding.ItemChatInBinding
 import cn.android666.im.databinding.ItemChatNoticeBinding
 import cn.android666.im.databinding.ItemChatOutBinding
@@ -25,12 +26,14 @@ import cn.android666.im.ui.conversation.TimeLabel
  * @property now 当前时间（毫秒），计算时间分隔的文字
  * @property onResend 点击发送失败的图标（重发）
  * @property onLongClick 长按消息气泡（操作菜单）
+ * @property selfJid 本人 bare JID（引用本人的消息时显示"我"）
  */
 class ChatAdapter(
     private val showReadState: Boolean,
     private val now: () -> Long,
     private val onResend: (ChatMessage) -> Unit,
     private val onLongClick: (ChatMessage) -> Unit = {},
+    private val selfJid: String? = null,
 ) : PagingDataAdapter<ChatListItem, RecyclerView.ViewHolder>(DIFF) {
 
     /**
@@ -129,6 +132,7 @@ class ChatAdapter(
             onLongClick(message)
             true
         }
+        bindQuote(b.quote, message)
     }
 
     /**
@@ -145,6 +149,7 @@ class ChatAdapter(
             onLongClick(message)
             true
         }
+        bindQuote(b.quote, message)
         b.sending.isVisible = message.state == MessageState.SENDING
         b.failed.isVisible = message.state == MessageState.FAILED
         b.failed.setOnClickListener { onResend(message) }
@@ -154,6 +159,18 @@ class ChatAdapter(
         val error = errorText(message)
         b.error.isVisible = error != null
         error?.let(b.error::setText)
+    }
+
+    /**
+     * 显示引用的原消息。
+     *
+     * @param view 引用预览
+     * @param message 消息
+     */
+    private fun bindQuote(view: android.widget.TextView, message: ChatMessage) {
+        val reply = message.reply
+        view.isVisible = reply != null
+        if (reply != null) view.text = quoteText(view.context, reply, selfJid)
     }
 
     companion object {
@@ -195,6 +212,26 @@ class ChatAdapter(
          */
         fun errorText(message: ChatMessage): Int? =
             if (message.state == MessageState.FAILED && message.errorCode == "sensitive-word") R.string.chat_error_sensitive else null
+
+        /**
+         * 引用预览的文字："李四：原文"、本人的消息"我：原文"、"原消息已撤回"、"原消息不可见"。
+         *
+         * @param context Context
+         * @param reply 原消息
+         * @param selfJid 本人 bare JID
+         * @return 文字
+         */
+        fun quoteText(context: Context, reply: ReplyPreview, selfJid: String?): String = when (reply) {
+            ReplyPreview.Missing -> context.getString(R.string.chat_quote_missing)
+            ReplyPreview.Retracted -> context.getString(R.string.chat_quote_retracted)
+            is ReplyPreview.Found -> {
+                val name = when {
+                    reply.senderJid == selfJid -> context.getString(R.string.chat_quote_self)
+                    else -> reply.senderName ?: reply.senderJid.substringBefore('@')
+                }
+                context.getString(R.string.chat_quote_format, name, reply.text)
+            }
+        }
 
         /**
          * 时间分隔的文字：今天"HH:mm"，其余"昨天 HH:mm""星期一 HH:mm""10月6日 HH:mm""2025年1月2日 HH:mm"。

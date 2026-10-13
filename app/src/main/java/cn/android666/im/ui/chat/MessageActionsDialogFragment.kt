@@ -10,7 +10,7 @@ import cn.android666.im.R
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
- * 长按消息弹出的操作菜单（复制、撤回）。结果通过 Fragment Result API 返回：
+ * 长按消息弹出的操作菜单（复制、引用、撤回）。结果通过 Fragment Result API 返回：
  * requestKey 为 [REQUEST_KEY]，Bundle 中 [RESULT_ACTION] 为选中的操作、[RESULT_ROW_ID] 为消息 rowId、[RESULT_TEXT] 为消息文字。
  */
 class MessageActionsDialogFragment : DialogFragment() {
@@ -24,7 +24,15 @@ class MessageActionsDialogFragment : DialogFragment() {
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val args = requireArguments()
         val actions = args.getStringArray(ARG_ACTIONS).orEmpty()
-        val labels = actions.map { getString(if (it == ACTION_RETRACT) R.string.chat_action_retract else R.string.chat_action_copy) }
+        val labels = actions.map {
+            getString(
+                when (it) {
+                    ACTION_RETRACT -> R.string.chat_action_retract
+                    ACTION_REPLY -> R.string.chat_action_reply
+                    else -> R.string.chat_action_copy
+                },
+            )
+        }
         return MaterialAlertDialogBuilder(requireContext())
             .setItems(labels.toTypedArray()) { _, which ->
                 setFragmentResult(
@@ -43,7 +51,7 @@ class MessageActionsDialogFragment : DialogFragment() {
         /** 结果的 key */
         const val REQUEST_KEY = "messageActions"
 
-        /** 结果：操作（[ACTION_COPY] / [ACTION_RETRACT]） */
+        /** 结果：操作（[ACTION_COPY] / [ACTION_REPLY] / [ACTION_RETRACT]） */
         const val RESULT_ACTION = "action"
 
         /** 结果：消息 rowId */
@@ -57,6 +65,9 @@ class MessageActionsDialogFragment : DialogFragment() {
 
         /** 操作：撤回 */
         const val ACTION_RETRACT = "retract"
+
+        /** 操作：引用 */
+        const val ACTION_REPLY = "reply"
 
         private const val ARG_ACTIONS = "actions"
         private const val ARG_ROW_ID = "rowId"

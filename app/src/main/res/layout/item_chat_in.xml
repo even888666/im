@@ -17,18 +17,43 @@
         android:layout_height="40dp"
         app:avatarTextSize="14sp" />
 
-    <TextView
-        android:id="@+id/bubble"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
-        android:autoLink="web|phone"
-        android:background="@drawable/bg_bubble_in"
-        android:paddingStart="12dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="8dp"
-        android:textAppearance="?attr/textAppearanceBodyLarge"
-        android:textIsSelectable="false"
-        tools:text="你好，下午 3 点开会" />
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/bubble"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:autoLink="web|phone"
+            android:background="@drawable/bg_bubble_in"
+            android:paddingStart="12dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="8dp"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textIsSelectable="false"
+            tools:text="你好，下午 3 点开会" />
+
+        <!-- 引用的原消息（开发计划 4.15） -->
+        <TextView
+            android:id="@+id/quote"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/bg_chat_notice"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:paddingStart="8dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="4dp"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?android:attr/textColorSecondary"
+            android:visibility="gone"
+            tools:text="李四：下午三点开会"
+            tools:visibility="visible" />
+    </LinearLayout>
 </LinearLayout>

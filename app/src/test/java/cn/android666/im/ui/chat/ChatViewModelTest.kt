@@ -200,7 +200,7 @@ class ChatViewModelTest {
         assertThat(db.messageDao().getByRowId(row)!!.status).isEqualTo(MessageEntity.STATUS_SENDING)
     }
 
-    /** 长按菜单：文字可复制；本人 2 分钟内已发出的可撤回 */
+    /** 长按菜单：文字可复制；未撤回的可引用；本人 2 分钟内已发出的可撤回 */
     @Test
     fun actionsFor_rules() = runTest(mainDispatcherRule.testDispatcher) {
         val (vm, _) = newVm()
@@ -211,13 +211,75 @@ class ChatViewModelTest {
         )
         val now = 1_000_000L
         val copy = MessageActionsDialogFragment.ACTION_COPY
+        val reply = MessageActionsDialogFragment.ACTION_REPLY
         val retract = MessageActionsDialogFragment.ACTION_RETRACT
-        assertThat(vm.actionsFor(msg(true, MessageState.SENT, now - 60_000), now)).containsExactly(copy, retract).inOrder()
-        assertThat(vm.actionsFor(msg(true, MessageState.READ, now - 121_000), now)).containsExactly(copy)
-        assertThat(vm.actionsFor(msg(true, MessageState.FAILED, now), now)).containsExactly(copy)
-        assertThat(vm.actionsFor(msg(true, MessageState.SENDING, now), now)).containsExactly(copy)
-        assertThat(vm.actionsFor(msg(false, MessageState.RECEIVED, now), now)).containsExactly(copy)
+        assertThat(vm.actionsFor(msg(true, MessageState.SENT, now - 60_000), now)).containsExactly(copy, reply, retract).inOrder()
+        assertThat(vm.actionsFor(msg(true, MessageState.READ, now - 121_000), now)).containsExactly(copy, reply)
+        assertThat(vm.actionsFor(msg(true, MessageState.FAILED, now), now)).containsExactly(copy, reply)
+        assertThat(vm.actionsFor(msg(true, MessageState.SENDING, now), now)).containsExactly(copy, reply)
+        assertThat(vm.actionsFor(msg(false, MessageState.RECEIVED, now), now)).containsExactly(copy, reply)
         assertThat(vm.actionsFor(msg(true, MessageState.SENT, now, retracted = true), now)).isEmpty()
+    }
+
+    /** 4.15：引用对方的消息 → 引用条显示姓名与原文 → 发送后带 reply，引用条清空；列表中显示引用预览 */
+    @Test
+    fun reply_sendAndPreview() = runTest(mainDispatcherRule.testDispatcher) {
+        db.employeeDao().upsert(listOf(EmployeeEntity(BOB, "10002", "李四", "lisi", "ls", "d", "", "", "", "", 0, "")))
+        val orig = insert("orig", 1_000)
+        val (vm, _) = newVm()
+
+        vm.startReply(orig)
+        runCurrent()
+        assertThat(vm.reply.value).isEqualTo(ReplyDraft("orig", BOB, "李四", "b-orig"))
+
+        vm.send("收到")
+        runCurrent()
+        assertThat(vm.reply.value).isNull()
+        val sent = db.messageDao().last(BOB)!!
+        assertThat(sent.replyToMsgId).isEqualTo("orig")
+
+        val newest = (vm.items.asSnapshot().first() as ChatListItem.Message).message
+        assertThat(newest.reply).isEqualTo(cn.android666.im.data.message.ReplyPreview.Found(BOB, "李四", "b-orig"))
+    }
+
+    /** 引用预览：原消息不在本地 → 不可见；原消息已撤回 → 已撤回 */
+    @Test
+    fun replyPreview_missingAndRetracted() = runTest(mainDispatcherRule.testDispatcher) {
+        val gone = insert("gone", 1_000)
+        db.messageDao().markRetracted(gone, BOB)
+        db.messageDao().insert(
+            MessageEntity(msgId = "r1", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "text",
+                body = "x", status = MessageEntity.STATUS_RECEIVED, serverTime = 2_000, replyToMsgId = "gone"),
+        )
+        db.messageDao().insert(
+            MessageEntity(msgId = "r2", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "text",
+                body = "y", status = MessageEntity.STATUS_RECEIVED, serverTime = 3_000, replyToMsgId = "never-seen"),
+        )
+        val (vm, _) = newVm()
+
+        val messages = vm.items.asSnapshot().filterIsInstance<ChatListItem.Message>().associate { it.message.msgId to it.message.reply }
+        assertThat(messages["r1"]).isEqualTo(cn.android666.im.data.message.ReplyPreview.Retracted)
+        assertThat(messages["r2"]).isEqualTo(cn.android666.im.data.message.ReplyPreview.Missing)
+        assertThat(messages["gone"]).isNull()
+    }
+
+    /** 引用自己的消息：姓名为空（界面显示"我"）；已撤回的不能引用；取消引用 */
+    @Test
+    fun reply_ownAndCancel() = runTest(mainDispatcherRule.testDispatcher) {
+        val own = insert("own", 1_000, direction = MessageEntity.DIRECTION_OUT)
+        val gone = insert("gone", 2_000)
+        db.messageDao().markRetracted(gone, BOB)
+        val (vm, _) = newVm()
+
+        vm.startReply(gone)
+        runCurrent()
+        assertThat(vm.reply.value).isNull()
+
+        vm.startReply(own)
+        runCurrent()
+        assertThat(vm.reply.value!!.senderName).isNull()
+        vm.cancelReply()
+        assertThat(vm.reply.value).isNull()
     }
 
     /** 撤回未发出（未登录时一直是发送中）的消息：不允许，不提示 */

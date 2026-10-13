@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.initializer
@@ -97,6 +98,7 @@ class ChatActivity : AppCompatActivity() {
             onLongClick = { message ->
                 MessageActionsDialogFragment.show(supportFragmentManager, message.rowId, message.body, viewModel.actionsFor(message))
             },
+            selfJid = appContainer.selfJid(),
         )
         val layoutManager = LinearLayoutManager(this).apply { reverseLayout = true }
         binding.list.layoutManager = layoutManager
@@ -130,12 +132,23 @@ class ChatActivity : AppCompatActivity() {
             when (result.getString(MessageActionsDialogFragment.RESULT_ACTION)) {
                 MessageActionsDialogFragment.ACTION_COPY -> copy(result.getString(MessageActionsDialogFragment.RESULT_TEXT).orEmpty())
                 MessageActionsDialogFragment.ACTION_RETRACT -> viewModel.retract(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
+                MessageActionsDialogFragment.ACTION_REPLY -> viewModel.startReply(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
             }
         }
 
         binding.input.doAfterTextChanged {
             binding.send.isEnabled = !it.isNullOrBlank()
             viewModel.onInputChanged(it?.toString().orEmpty())
+        }
+        // 引用条
+        binding.quoteClose.setOnClickListener { viewModel.cancelReply() }
+        collectWhenStarted(viewModel.reply) { draft ->
+            binding.quoteBar.isVisible = draft != null
+            if (draft != null) {
+                val name = draft.senderName ?: getString(R.string.chat_quote_self)
+                binding.quoteText.text = getString(R.string.chat_quote_format, name, draft.text)
+                binding.input.requestFocus()
+            }
         }
         collectWhenStarted(viewModel.peerTyping) { typing ->
             binding.toolbar.subtitle = if (typing) getString(R.string.chat_peer_typing) else null

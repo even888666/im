@@ -133,16 +133,27 @@ data class ConversationEntity(
 }
 
 /**
- * 聊天页的一条消息：消息 + 发送方的姓名与头像（左连接员工表，已离职或未同步的为 null）。
+ * 聊天页的一条消息：消息 + 发送方的姓名与头像（左连接员工表，已离职或未同步的为 null）
+ * + 被引用的原消息（引用回复，开发计划 4.15；本地没有原消息时各字段为 null）。
  *
  * @property message 消息
  * @property senderName 发送方姓名
  * @property senderAvatarHash 发送方头像哈希
+ * @property replyRowId 被引用消息的 rowId；本地没有时为 null
+ * @property replySenderJid 被引用消息的发送方
+ * @property replySenderName 被引用消息的发送方姓名
+ * @property replyBody 被引用消息的正文 / 降级文本
+ * @property replyRetracted 被引用消息是否已撤回
  */
 data class MessageWithSender(
     @Embedded val message: MessageEntity,
     val senderName: String?,
     val senderAvatarHash: String?,
+    val replyRowId: Long? = null,
+    val replySenderJid: String? = null,
+    val replySenderName: String? = null,
+    val replyBody: String? = null,
+    val replyRetracted: Boolean? = null,
 )
 
 /**

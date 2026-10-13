@@ -169,15 +169,21 @@ interface MessageDao {
     fun observeLatest(conversationId: String, limit: Int): Flow<List<MessageEntity>>
 
     /**
-     * 聊天页分页（开发计划 4.8）：会话中的消息，新的在前（列表倒序显示，最新的在底部），附带发送方姓名与头像。
+     * 聊天页分页（开发计划 4.8）：会话中的消息，新的在前（列表倒序显示，最新的在底部），附带发送方姓名与头像、
+     * 被引用的原消息（4.15）。
      *
      * @param conversationId 会话 ID
      * @return 分页数据源（数据变化时自动失效重新加载）
      */
     @Query(
         """
-        SELECT m.*, e.name AS senderName, e.avatarHash AS senderAvatarHash
-        FROM message AS m LEFT JOIN employee AS e ON e.jid = m.senderJid
+        SELECT m.*, e.name AS senderName, e.avatarHash AS senderAvatarHash,
+               r.rowId AS replyRowId, r.senderJid AS replySenderJid, re.name AS replySenderName,
+               r.body AS replyBody, r.retracted AS replyRetracted
+        FROM message AS m
+        LEFT JOIN employee AS e ON e.jid = m.senderJid
+        LEFT JOIN message AS r ON r.conversationId = m.conversationId AND r.msgId = m.replyToMsgId
+        LEFT JOIN employee AS re ON re.jid = r.senderJid
         WHERE m.conversationId = :conversationId
         ORDER BY m.serverTime DESC, m.rowId DESC
         """,

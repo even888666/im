@@ -260,6 +260,14 @@ class MessageRepository(
     suspend fun get(rowId: Long): MessageEntity? = databases.require().messageDao().getByRowId(rowId)
 
     /**
+     * 按 rowId 查询消息（界面模型，不含发送方姓名和引用信息）。
+     *
+     * @param rowId rowId
+     * @return 消息；不存在时为 null
+     */
+    suspend fun chatMessage(rowId: Long): ChatMessage? = get(rowId)?.let { MessageWithSender(it, null, null).toChatMessage() }
+
+    /**
      * 会话中对方发来的最新一条消息（发送已读标记）。
      *
      * @param conversationId 会话 ID
