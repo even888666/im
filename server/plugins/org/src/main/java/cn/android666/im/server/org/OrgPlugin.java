@@ -8,6 +8,7 @@ import cn.android666.im.server.org.xmpp.AccountEventListener;
 import cn.android666.im.server.org.xmpp.AccountInterceptor;
 import cn.android666.im.server.org.xmpp.AccountIqProcessor;
 import cn.android666.im.server.org.xmpp.AccountManager;
+import cn.android666.im.server.org.xmpp.AvatarHashListener;
 import cn.android666.im.server.org.xmpp.FunctionIqHandler;
 import cn.android666.im.server.org.xmpp.OpenfirePresenceSource;
 import cn.android666.im.server.org.xmpp.OrgIqProcessor;
@@ -23,6 +24,7 @@ import org.jivesoftware.openfire.event.UserEventDispatcher;
 import org.jivesoftware.openfire.handler.IQHandler;
 import org.jivesoftware.openfire.interceptor.InterceptorManager;
 import org.jivesoftware.openfire.interceptor.PacketInterceptor;
+import org.jivesoftware.openfire.vcard.VCardEventDispatcher;
 import org.jivesoftware.util.JiveGlobals;
 import org.jivesoftware.util.TaskEngine;
 import org.slf4j.Logger;
@@ -43,6 +45,7 @@ import java.util.TimerTask;
  *   <li>§3 账号状态查询、强制改密限制、密码强度校验；</li>
  *   <li>§4 组织架构：部门下级、批量员工详情、同步、搜索；</li>
  *   <li>§5 订阅自动同意、在线状态查询；</li>
+ *   <li>§4.1 头像哈希：vCard 中的头像变化时更新员工的 avatarHash；</li>
  *   <li>管理后台：Excel 导入、部门 / 员工维护（含禁用踢下线）；导入目录 {@code {Openfire 目录}/org-import/}。</li>
  * </ul>
  *
@@ -78,6 +81,9 @@ public class OrgPlugin implements Plugin {
 
     /** 用户事件监听 */
     private AccountEventListener accountEventListener;
+
+    /** vCard 事件监听（头像哈希） */
+    private AvatarHashListener avatarHashListener;
 
     /** 定时任务：清理变更日志、检查导入目录 */
     private List<TimerTask> tasks = List.of();
@@ -138,6 +144,8 @@ public class OrgPlugin implements Plugin {
         interceptors.forEach(InterceptorManager.getInstance()::addInterceptor);
         accountEventListener = new AccountEventListener(orgService);
         UserEventDispatcher.addListener(accountEventListener);
+        avatarHashListener = new AvatarHashListener(orgService);
+        VCardEventDispatcher.addListener(avatarHashListener);
 
         // 定时任务
         TimerTask prune = new TimerTask() {
@@ -168,6 +176,9 @@ public class OrgPlugin implements Plugin {
         tasks.forEach(TaskEngine.getInstance()::cancelScheduledTask);
         if (accountEventListener != null) {
             UserEventDispatcher.removeListener(accountEventListener);
+        }
+        if (avatarHashListener != null) {
+            VCardEventDispatcher.removeListener(avatarHashListener);
         }
         interceptors.forEach(InterceptorManager.getInstance()::removeInterceptor);
         XMPPServer server = XMPPServer.getInstance();

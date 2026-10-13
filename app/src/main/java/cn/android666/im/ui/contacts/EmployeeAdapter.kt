@@ -8,10 +8,9 @@ import androidx.recyclerview.widget.RecyclerView
 import cn.android666.im.R
 import cn.android666.im.data.org.Employee
 import cn.android666.im.databinding.ItemEmployeeBinding
-import cn.android666.im.ui.widget.NameAvatar
 
 /**
- * 员工列表（通讯录搜索结果）：文字头像、姓名、"职位 · 工号"。
+ * 员工列表（通讯录搜索结果）：头像、姓名、"职位 · 工号"。
  *
  * @property onClick 点击员工
  */
@@ -61,7 +60,7 @@ class EmployeeAdapter(private val onClick: (Employee) -> Unit) :
          * @param onClick 点击回调
          */
         fun bindEmployee(binding: ItemEmployeeBinding, employee: Employee, onClick: (Employee) -> Unit) {
-            NameAvatar.bind(binding.avatar, employee.name, employee.jid)
+            binding.avatar.bind(employee.name, employee.jid, employee.avatarHash)
             binding.name.text = employee.name
             binding.subtitle.text = if (employee.title.isEmpty()) {
                 employee.empNo

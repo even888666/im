@@ -168,6 +168,8 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.room.runtime)
+    implementation(libs.coil)
+    implementation(libs.androidx.exifinterface)
     ksp(libs.androidx.room.compiler)
     // XMPP（Smack），只允许 core/xmpp/smack 包引用（Android工程架构.md §3.3）
     implementation(libs.smack.android.extensions)

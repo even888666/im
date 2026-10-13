@@ -147,4 +147,7 @@
     <string name="me_status">我的状态</string>
     <string name="me_status_text_hint">状态说明（可选，如：下午 3 点前在开会）</string>
     <string name="me_status_saved">状态已更新</string>
+    <string name="me_avatar_hint">点击头像更换</string>
+    <string name="me_avatar_saved">头像已更新</string>
+    <string name="me_avatar_invalid">无法读取该图片，请换一张试试</string>
 </resources>

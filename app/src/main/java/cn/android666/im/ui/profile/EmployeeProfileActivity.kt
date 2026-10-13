@@ -17,7 +17,6 @@ import cn.android666.im.ui.base.appViewModels
 import cn.android666.im.ui.base.applySystemBarsPadding
 import cn.android666.im.ui.base.collectWhenStarted
 import cn.android666.im.ui.common.PresenceText
-import cn.android666.im.ui.widget.NameAvatar
 import com.google.android.material.color.MaterialColors
 
 /**
@@ -71,12 +70,12 @@ class EmployeeProfileActivity : AppCompatActivity() {
         binding.fields.removeAllViews()
         if (employee == null) {
             val name = jid.substringBefore('@')
-            NameAvatar.bind(binding.avatar, name, jid)
+            binding.avatar.bind(name, jid, "")
             binding.name.text = name
             binding.headline.text = ""
             return
         }
-        NameAvatar.bind(binding.avatar, employee.name, employee.jid)
+        binding.avatar.bind(employee.name, employee.jid, employee.avatarHash)
         binding.name.text = employee.name
         binding.headline.text = employee.title
         addField(R.string.profile_emp_no, employee.empNo, null)

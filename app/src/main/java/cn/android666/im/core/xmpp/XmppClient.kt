@@ -120,6 +120,24 @@ interface XmppClient {
     suspend fun removeRosterItem(jid: String)
 
     /**
+     * 读取某人 vCard 中的头像图片（开发计划 3.21，XEP-0054）。
+     *
+     * @param jid bare JID
+     * @return 图片数据；没有 vCard 或没有头像时为 null
+     * @throws XmppException 未连接、超时等
+     */
+    suspend fun loadAvatar(jid: String): ByteArray?
+
+    /**
+     * 设置本人头像：读取本人的 vCard，替换头像后保存（保留 vCard 中的其他字段）。
+     *
+     * @param data 图片数据
+     * @param mimeType 图片类型，如 image/jpeg
+     * @throws XmppException 未连接、超时、服务器拒绝
+     */
+    suspend fun setMyAvatar(data: ByteArray, mimeType: String)
+
+    /**
      * 立即检测连接是否仍然可用（发送 XEP-0199 ping，10 秒内无响应视为失效）。
      * 用于切换网络后：旧网络上的 TCP 连接通常已经失效，但要等心跳超时才会发现，主动检测能更快重连。
      * 检测失败时连接会被断开，状态变为 [ConnectionState.Disconnected]（网络原因），由重连逻辑接手。

@@ -30,9 +30,11 @@ import kotlinx.coroutines.withContext
 import org.jivesoftware.smack.ConnectionConfiguration.SecurityMode
 import org.jivesoftware.smack.ConnectionListener
 import org.jivesoftware.smack.ReconnectionManager
+import org.jivesoftware.smack.XMPPException
 import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smack.packet.Presence
 import org.jivesoftware.smack.packet.StandardExtensionElement
+import org.jivesoftware.smack.packet.StanzaError
 import org.jivesoftware.smack.roster.Roster
 import org.jivesoftware.smack.roster.RosterEntry
 import org.jivesoftware.smack.roster.RosterListener
@@ -46,6 +48,8 @@ import org.jivesoftware.smackx.disco.ServiceDiscoveryManager
 import org.jivesoftware.smackx.httpfileupload.HttpFileUploadManager
 import org.jivesoftware.smackx.ping.PingManager
 import org.jivesoftware.smackx.time.EntityTimeManager
+import org.jivesoftware.smackx.vcardtemp.VCardManager
+import org.jivesoftware.smackx.vcardtemp.packet.VCard
 import org.jxmpp.jid.Jid
 import org.jxmpp.jid.impl.JidCreate
 import java.net.InetAddress
@@ -364,6 +368,27 @@ class SmackXmppClient(
         if (!rosterPushFlow.tryEmit(item)) log.warn("花名册推送缓冲区已满，丢弃：{}", item)
     }
 
+    override suspend fun loadAvatar(jid: String): ByteArray? = request("读取头像") { current ->
+        try {
+            VCardManager.getInstanceFor(current).loadVCard(JidCreate.entityBareFrom(jid)).avatar?.takeIf { it.isNotEmpty() }
+        } catch (e: XMPPException.XMPPErrorException) {
+            // 没有 vCard：Openfire 返回 service-unavailable（XEP-0054 也允许 item-not-found）
+            if (e.isNoVCard()) null else throw e
+        }
+    }
+
+    override suspend fun setMyAvatar(data: ByteArray, mimeType: String) = request("设置头像") { current ->
+        val manager = VCardManager.getInstanceFor(current)
+        val vCard = try {
+            manager.loadVCard()
+        } catch (e: XMPPException.XMPPErrorException) {
+            if (e.isNoVCard()) VCard() else throw e
+        }
+        vCard.setAvatar(data, mimeType)
+        manager.saveVCard(vCard)
+        log.info("已设置头像：{} 字节", data.size)
+    }
+
     override suspend fun checkAlive(): Boolean = withContext(dispatchers.io) {
         val current = connection
         if (current == null || !current.isAuthenticated) return@withContext false
@@ -486,6 +511,15 @@ class SmackXmppClient(
      *
      * @return 断开原因
      */
+    /**
+     * 是否为"没有 vCard"的错误：Openfire 对没有 vCard 的用户返回 service-unavailable，XEP-0054 也允许 item-not-found。
+     *
+     * @return 是则为 true
+     */
+    private fun XMPPException.XMPPErrorException.isNoVCard(): Boolean =
+        stanzaError.condition == StanzaError.Condition.item_not_found ||
+            stanzaError.condition == StanzaError.Condition.service_unavailable
+
     /**
      * Smack 花名册条目转为与 Smack 无关的模型。
      *

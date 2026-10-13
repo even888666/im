@@ -10,6 +10,7 @@ import cn.android666.im.core.security.AesGcmCredentialCipher
 import cn.android666.im.core.security.AndroidKeyStoreKeyProvider
 import cn.android666.im.core.security.RootCaTrust
 import cn.android666.im.data.account.CredentialStore
+import cn.android666.im.data.avatar.AvatarRepository
 import cn.android666.im.data.contact.ContactRepository
 import cn.android666.im.data.contact.RosterStep
 import cn.android666.im.data.org.OrgRepository
@@ -41,6 +42,7 @@ import cn.android666.im.core.log.LogFilePrefixManager
 import cn.android666.im.core.log.LogFilePrefixStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import java.io.File
 
 /**
  * 应用级依赖容器，在 [cn.android666.im.App.onCreate] 中创建，持有所有单例（见 Android工程架构.md §4.1）。
@@ -147,6 +149,11 @@ class AppContainer(context: Context) {
 
     /** 当前账号的用户数据库（按工号分库，登录时打开、退出登录时关闭） */
     val userDatabaseHolder: UserDatabaseHolder by lazy { UserDatabaseHolder(UserDatabaseHolder.create(appContext)) }
+
+    /** 头像：按 avatarHash 缓存 vCard 头像、设置本人头像 */
+    val avatarRepository: AvatarRepository by lazy {
+        AvatarRepository(xmppClient, File(appContext.filesDir, "avatars"), dispatchers, applicationScope)
+    }
 
     /** 在线状态：本人状态、同事状态查询（缓存 60 秒） */
     val presenceRepository: PresenceRepository by lazy { PresenceRepository(xmppClient, userDatabaseHolder, clock) }

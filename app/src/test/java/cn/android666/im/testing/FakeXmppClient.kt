@@ -168,6 +168,24 @@ class FakeXmppClient : XmppClient {
         rosterPushFlow.emit(item)
     }
 
+    /** 假的 vCard 头像（JID → 图片数据） */
+    val avatars = mutableMapOf<String, ByteArray>()
+
+    /** 本人的 JID（[setMyAvatar] 保存到 [avatars] 的键） */
+    var selfJid = "10001@im.example.com"
+
+    override suspend fun loadAvatar(jid: String): ByteArray? {
+        calls += "avatar:load:$jid"
+        throwPendingError()
+        return avatars[jid]
+    }
+
+    override suspend fun setMyAvatar(data: ByteArray, mimeType: String) {
+        calls += "avatar:set:$mimeType"
+        throwPendingError()
+        avatars[selfJid] = data
+    }
+
     /** 依次用于每次 [checkAlive] 的结果，未预设时返回 true；返回 false 时模拟连接失效并断开 */
     val aliveResults = ArrayDeque<Boolean>()
 

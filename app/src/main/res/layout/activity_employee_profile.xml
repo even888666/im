@@ -32,14 +32,11 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
+                <cn.android666.im.ui.widget.AvatarView
                     android:id="@+id/avatar"
                     android:layout_width="64dp"
                     android:layout_height="64dp"
-                    android:gravity="center"
-                    android:textColor="@android:color/white"
-                    android:textSize="20sp"
-                    tools:text="张三" />
+                    app:avatarTextSize="20sp" />
 
                 <LinearLayout
                     android:layout_width="0dp"

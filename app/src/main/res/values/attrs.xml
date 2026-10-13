@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 头像控件（ui/widget/AvatarView） -->
+    <declare-styleable name="AvatarView">
+        <!-- 文字头像的字号 -->
+        <attr name="avatarTextSize" format="dimension" />
+    </declare-styleable>
+</resources>

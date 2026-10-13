@@ -1,18 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- "我"页面：工号、退出登录（开发计划 2.23）；个人资料、设置等后续加入 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="24dp">
 
-    <TextView
-        android:id="@+id/empNoText"
-        android:layout_width="wrap_content"
+    <!-- 头像、姓名、工号；点击头像更换（开发计划 3.21） -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceTitleMedium"
-        tools:text="工号：10001" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <cn.android666.im.ui.widget.AvatarView
+            android:id="@+id/avatar"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/me_avatar_hint"
+            app:avatarTextSize="20sp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/nameText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                tools:text="张三" />
+
+            <TextView
+                android:id="@+id/empNoText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="?android:attr/textColorSecondary"
+                tools:text="工号：10001" />
+        </LinearLayout>
+    </LinearLayout>
 
     <!-- 我的状态（开发计划 3.20），点击修改 -->
     <LinearLayout

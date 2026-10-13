@@ -12,6 +12,7 @@ import cn.android666.im.R
 import cn.android666.im.core.database.entity.DepartmentEntity
 import cn.android666.im.core.database.entity.EmployeeEntity
 import cn.android666.im.ui.profile.EmployeeProfileActivity
+import cn.android666.im.ui.widget.AvatarView
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -104,7 +105,7 @@ class OrgPagesTest {
             waitUntil { name.text.toString() == "李四" }
             scenario.onActivity { activity ->
                 assertThat(activity.findViewById<TextView>(R.id.headline).text.toString()).isEqualTo("Android工程师")
-                assertThat(activity.findViewById<TextView>(R.id.avatar).text.toString()).isEqualTo("李四")
+                assertThat(activity.findViewById<AvatarView>(R.id.avatar).displayedText.toString()).isEqualTo("李四")
                 // 工号、部门、手机、邮箱（座机为空不显示）
                 assertThat(activity.findViewById<android.view.ViewGroup>(R.id.fields).childCount).isEqualTo(4)
                 assertThat(activity.findViewById<View>(R.id.notFound).visibility).isEqualTo(View.GONE)

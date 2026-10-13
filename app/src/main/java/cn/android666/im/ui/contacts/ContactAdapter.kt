@@ -8,7 +8,6 @@ import androidx.recyclerview.widget.RecyclerView
 import cn.android666.im.R
 import cn.android666.im.data.contact.Contact
 import cn.android666.im.databinding.ItemEmployeeBinding
-import cn.android666.im.ui.widget.NameAvatar
 
 /**
  * 常用联系人列表：有员工信息的显示姓名和职位，已离职（不在组织架构中）的显示工号和"已离职"。
@@ -48,7 +47,7 @@ class ContactAdapter(private val onClick: (Contact) -> Unit) : ListAdapter<Conta
             EmployeeAdapter.bindEmployee(binding, employee) { onClick(contact) }
         } else {
             val name = contact.jid.substringBefore('@')
-            NameAvatar.bind(binding.avatar, name, contact.jid)
+            binding.avatar.bind(name, contact.jid, "")
             binding.name.text = name
             binding.subtitle.setText(R.string.contact_left)
             binding.root.setOnClickListener { onClick(contact) }
