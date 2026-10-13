@@ -68,6 +68,15 @@
             android:name=".ui.profile.EmployeeProfileActivity"
             android:exported="false" />
 
+        <!-- 选择转发对象、合并转发的聊天记录（开发计划 4.16） -->
+        <activity
+            android:name=".ui.forward.ForwardTargetActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.forward.MergedMessageActivity"
+            android:exported="false" />
+
         <!-- 聊天页（开发计划 4.8） -->
         <activity
             android:name=".ui.chat.ChatActivity"

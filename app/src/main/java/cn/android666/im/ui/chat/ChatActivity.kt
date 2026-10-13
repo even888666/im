@@ -27,6 +27,9 @@ import cn.android666.im.ui.base.MessageDialogFragment
 import cn.android666.im.ui.base.appContainer
 import cn.android666.im.ui.base.applySystemBarsPadding
 import cn.android666.im.ui.base.collectWhenStarted
+import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.ui.forward.ForwardTargetActivity
+import cn.android666.im.ui.forward.MergedMessageActivity
 import kotlinx.coroutines.launch
 
 /**
@@ -54,6 +57,10 @@ class ChatActivity : AppCompatActivity() {
                     org = container.orgRepository,
                     history = container.historyLoader,
                     chatStates = container.chatStates,
+                    titleFormatter = object : MergedTitleFormatter {
+                        override fun pair(self: String, peer: String) = getString(R.string.forward_merged_title, self, peer)
+                        override fun selfOnly(self: String) = getString(R.string.forward_merged_title_self, self)
+                    },
                 )
             }
         }
@@ -104,6 +111,7 @@ class ChatActivity : AppCompatActivity() {
             },
             selfJid = appContainer.selfJid(),
             onToggle = { viewModel.toggleSelection(it.rowId) },
+            onOpen = { message -> (message.content as? MessageContent.Merged)?.let { MergedMessageActivity.start(this, it) } },
         )
         val layoutManager = LinearLayoutManager(this).apply { reverseLayout = true }
         binding.list.layoutManager = layoutManager
@@ -139,6 +147,7 @@ class ChatActivity : AppCompatActivity() {
                 MessageActionsDialogFragment.ACTION_RETRACT -> viewModel.retract(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
                 MessageActionsDialogFragment.ACTION_REPLY -> viewModel.startReply(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
                 MessageActionsDialogFragment.ACTION_SELECT -> viewModel.startSelection(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
+                MessageActionsDialogFragment.ACTION_FORWARD -> pickForwardTarget(setOf(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID)), merged = false)
                 MessageActionsDialogFragment.ACTION_DELETE -> confirmDelete(setOf(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID)))
             }
         }
@@ -166,9 +175,9 @@ class ChatActivity : AppCompatActivity() {
         }
         onBackPressedDispatcher.addCallback(this, exitSelection)
         binding.deleteSelected.setOnClickListener { viewModel.selection.value?.takeIf { it.isNotEmpty() }?.let(::confirmDelete) }
-        // 转发见开发计划 4.16
-        binding.forwardEach.isVisible = false
-        binding.forwardMerged.isVisible = false
+        // 转发（开发计划 4.16）：先选择目标
+        binding.forwardEach.setOnClickListener { viewModel.selection.value?.takeIf { it.isNotEmpty() }?.let { pickForwardTarget(it, merged = false) } }
+        binding.forwardMerged.setOnClickListener { viewModel.selection.value?.takeIf { it.isNotEmpty() }?.let { pickForwardTarget(it, merged = true) } }
         supportFragmentManager.setFragmentResultListener(REQUEST_DELETE, this) { _, result ->
             val ids = viewModel.pendingDelete
             viewModel.pendingDelete = null
@@ -180,6 +189,8 @@ class ChatActivity : AppCompatActivity() {
             binding.selectionBar.isVisible = selected != null
             binding.inputBar.isVisible = selected == null
             binding.deleteSelected.isEnabled = !selected.isNullOrEmpty()
+            binding.forwardEach.isEnabled = !selected.isNullOrEmpty()
+            binding.forwardMerged.isEnabled = !selected.isNullOrEmpty()
             binding.toolbar.title = if (selected != null) getString(R.string.chat_selected_count, selected.size) else title(viewModel.peerName.value)
             if (selected != null) binding.quoteBar.isVisible = false
         }
@@ -207,6 +218,24 @@ class ChatActivity : AppCompatActivity() {
                 is ChatEvent.Toast -> Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /** 选择转发对象；返回后转发 [ChatViewModel.pendingForward] 中的消息 */
+    private val forwardTarget = registerForActivityResult(ForwardTargetActivity.Contract()) { target ->
+        val pending = viewModel.pendingForward
+        viewModel.pendingForward = null
+        if (target != null && pending != null) viewModel.forward(target, pending.first, pending.second)
+    }
+
+    /**
+     * 打开选择转发对象的页面。
+     *
+     * @param rowIds 被转发的消息
+     * @param merged 是否合并转发
+     */
+    private fun pickForwardTarget(rowIds: Set<Long>, merged: Boolean) {
+        viewModel.pendingForward = rowIds to merged
+        forwardTarget.launch(Unit)
     }
 
     /**

@@ -117,6 +117,15 @@
         <item quantity="other">收到 %d 条新消息</item>
     </plurals>
 
+    <!-- 转发（开发计划 4.16） -->
+    <string name="forward_title">选择聊天</string>
+    <string name="forward_confirm">发送给 %1$s？</string>
+    <string name="forward_send">发送</string>
+    <string name="forward_done">已转发</string>
+    <string name="forward_merged_title">%1$s和%2$s的聊天记录</string>
+    <string name="forward_merged_title_self">%1$s的聊天记录</string>
+    <string name="merged_title">聊天记录</string>
+
     <!-- 聊天页（开发计划 4.8） -->
     <string name="chat_input_hint">发消息</string>
     <string name="chat_send">发送</string>
@@ -132,6 +141,7 @@
     <string name="chat_peer_typing">对方正在输入…</string>
     <string name="chat_action_copy">复制</string>
     <string name="chat_action_reply">引用</string>
+    <string name="chat_action_forward">转发</string>
     <string name="chat_action_select">多选</string>
     <string name="chat_action_delete">删除</string>
     <string name="chat_forward_each">逐条转发</string>

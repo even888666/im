@@ -16,6 +16,8 @@ import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.database.entity.MessageWithSender
 import cn.android666.im.core.log.Logs
 import cn.android666.im.core.xmpp.extension.msg.Mention
+import cn.android666.im.core.xmpp.extension.msg.ForwardedItem
+import cn.android666.im.core.xmpp.extension.msg.MessageCodec
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -47,6 +49,13 @@ class MessageRepository(
 
     /** 用户正在查看的会话（聊天页可见时设置），该会话的新消息不计未读 */
     private val activeConversation = MutableStateFlow<String?>(null)
+
+    /**
+     * 本人 bare JID。
+     *
+     * @return JID；未登录时为 null
+     */
+    fun selfJid(): String? = selfJid.invoke()
 
     /**
      * 当前服务器时间（界面判断能否撤回等）。
@@ -352,6 +361,37 @@ class MessageRepository(
         require(text.isNotBlank()) { "消息不能为空" }
         require(text.codePointCount(0, text.length) <= MAX_TEXT_LENGTH) { "消息超过 $MAX_TEXT_LENGTH 字" }
         return enqueue(conversationId, conversationType, MessageContent.Text, text, replyToMsgId, mentions)
+    }
+
+    /**
+     * 转发（开发计划 4.16，协议规范 §7.7）：逐条转发时每条生成新消息（新消息 ID，内容复制原消息，文件类直接复用原 URL）；
+     * 合并转发时生成一条 merged 消息。已撤回的消息跳过；引用和 @ 不随之转发。
+     *
+     * @param targetId 目标会话 ID
+     * @param targetType 目标会话类型（会话不存在时创建）
+     * @param rowIds 被转发的消息 rowId（最多 [MAX_SELECTION] 条，按时间顺序转发）
+     * @param mergedTitle 合并转发的标题（如"张三和李四的聊天记录"）；为 null 时逐条转发
+     * @return 发出的消息条数
+     */
+    suspend fun forward(targetId: String, targetType: Int, rowIds: Collection<Long>, mergedTitle: String?): Int {
+        val sources = databases.require().messageDao().getByRowIds(rowIds.take(MAX_SELECTION)).filter { !it.retracted }
+        if (sources.isEmpty()) return 0
+        if (mergedTitle != null) {
+            val content = MessageContent.Merged(
+                title = mergedTitle,
+                items = sources.map {
+                    ForwardedItem(it.msgId, it.senderJid, it.body, MessageJson.decodeContent(it.type, it.contentJson), it.serverTime)
+                },
+            )
+            enqueue(targetId, targetType, content, MessageCodec.fallbackBody(content), null, emptyList())
+            log.info("合并转发 {} 条到 {}", sources.size, targetId)
+            return 1
+        }
+        sources.forEach {
+            enqueue(targetId, targetType, MessageJson.decodeContent(it.type, it.contentJson), it.body, null, emptyList())
+        }
+        log.info("逐条转发 {} 条到 {}", sources.size, targetId)
+        return sources.size
     }
 
     /**

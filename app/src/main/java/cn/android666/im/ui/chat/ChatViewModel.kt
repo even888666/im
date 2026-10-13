@@ -23,6 +23,7 @@ import cn.android666.im.data.message.Retractions
 import cn.android666.im.data.message.canRetract
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.data.sync.HistoryLoader
+import cn.android666.im.ui.forward.ForwardTarget
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -61,6 +62,37 @@ sealed interface ChatEvent {
 data class ReplyDraft(val msgId: String, val senderJid: String, val senderName: String?, val text: String)
 
 /**
+ * 合并转发标题的格式（开发计划 4.16）。界面用字符串资源实现；默认实现用于测试。
+ */
+interface MergedTitleFormatter {
+
+    /**
+     * 两人的聊天记录。
+     *
+     * @param self 本人姓名
+     * @param peer 对方姓名
+     * @return 标题
+     */
+    fun pair(self: String, peer: String): String
+
+    /**
+     * 本人（文件传输助手）的聊天记录。
+     *
+     * @param self 本人姓名
+     * @return 标题
+     */
+    fun selfOnly(self: String): String
+
+    companion object {
+        /** 默认格式（与字符串资源相同） */
+        val DEFAULT = object : MergedTitleFormatter {
+            override fun pair(self: String, peer: String) = "${self}和${peer}的聊天记录"
+            override fun selfOnly(self: String) = "${self}的聊天记录"
+        }
+    }
+}
+
+/**
  * 聊天页（开发计划 4.8）：分页消息（带时间分隔）、发送、重发、当前查看的会话。
  *
  * @property conversationId 会话 ID（对方 bare JID / 群 JID / 本人 bare JID）
@@ -72,6 +104,7 @@ data class ReplyDraft(val msgId: String, val senderJid: String, val senderName: 
  * @property org 组织架构（标题显示对方姓名、引用条中的发送方姓名）
  * @param history 从服务器加载更早历史（开发计划 4.11）；null 表示只显示本地消息
  * @property chatStates 正在输入状态（开发计划 4.14，仅单聊）；null 时不发送也不显示
+ * @property titleFormatter 合并转发标题的格式（字符串资源由界面提供）
  */
 class ChatViewModel(
     val conversationId: String,
@@ -83,6 +116,7 @@ class ChatViewModel(
     private val org: OrgRepository,
     history: HistoryLoader? = null,
     private val chatStates: ChatStates? = null,
+    private val titleFormatter: MergedTitleFormatter = MergedTitleFormatter.DEFAULT,
 ) : ViewModel() {
 
     /** 对方是否正在输入（单聊，标题栏下方显示"对方正在输入…"） */
@@ -172,6 +206,48 @@ class ChatViewModel(
         }
     }
 
+    /** 等待选择转发对象的消息（rowId 与是否合并）；选择页返回后使用 */
+    var pendingForward: Pair<Set<Long>, Boolean>? = null
+
+    /**
+     * 转发到选定的目标（开发计划 4.16）；完成后退出多选模式并提示。
+     *
+     * @param target 目标
+     * @param rowIds 被转发的消息
+     * @param merged 是否合并转发
+     */
+    fun forward(target: ForwardTarget, rowIds: Set<Long>, merged: Boolean) {
+        viewModelScope.launch {
+            try {
+                val title = if (merged) mergedTitle() else null
+                val sent = messages.forward(target.id, target.kind.toEntityType(), rowIds, title)
+                selectionState.value = null
+                if (sent > 0) eventChannel.send(ChatEvent.Toast(R.string.forward_done))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("转发失败：目标={}", target.id, e)
+                eventChannel.send(ChatEvent.Toast(R.string.chat_send_error))
+            }
+        }
+    }
+
+    /**
+     * 合并转发的标题：单聊为"张三和李四的聊天记录"，文件传输助手为"张三的聊天记录"。
+     *
+     * @return 标题
+     */
+    private suspend fun mergedTitle(): String {
+        val self = messages.selfJid()
+        val selfName = self?.let { org.employee(it)?.name ?: it.substringBefore('@') }.orEmpty()
+        return if (kind == ConversationKind.SELF || self == conversationId) {
+            titleFormatter.selfOnly(selfName)
+        } else {
+            val peer = org.employee(conversationId)?.name ?: conversationId.substringBefore('@')
+            titleFormatter.pair(selfName, peer)
+        }
+    }
+
     /**
      * 读取草稿（打开聊天页时恢复到输入框，开发计划 4.17）。
      *
@@ -249,7 +325,7 @@ class ChatViewModel(
     }
 
     /**
-     * 长按消息时可用的操作：文字消息可复制；未撤回的消息可引用；都可以多选、删除（本地）；本人 2 分钟内发出的消息可撤回。
+     * 长按消息时可用的操作：文字消息可复制；未撤回的消息可引用、转发；都可以多选、删除（本地）；本人 2 分钟内发出的消息可撤回。
      *
      * @param message 消息
      * @param now 当前服务器时间（毫秒）
@@ -258,6 +334,7 @@ class ChatViewModel(
     fun actionsFor(message: ChatMessage, now: Long = messages.serverNowMillis()): List<String> = buildList {
         if (!message.retracted && message.content is MessageContent.Text) add(MessageActionsDialogFragment.ACTION_COPY)
         if (!message.retracted) add(MessageActionsDialogFragment.ACTION_REPLY)
+        if (!message.retracted) add(MessageActionsDialogFragment.ACTION_FORWARD)
         add(MessageActionsDialogFragment.ACTION_SELECT)
         if (message.canRetract(now)) add(MessageActionsDialogFragment.ACTION_RETRACT)
         add(MessageActionsDialogFragment.ACTION_DELETE)

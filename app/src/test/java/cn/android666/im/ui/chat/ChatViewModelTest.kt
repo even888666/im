@@ -201,7 +201,7 @@ class ChatViewModelTest {
         assertThat(db.messageDao().getByRowId(row)!!.status).isEqualTo(MessageEntity.STATUS_SENDING)
     }
 
-    /** 长按菜单：文字可复制；未撤回的可引用；都可多选、删除；本人 2 分钟内已发出的可撤回 */
+    /** 长按菜单：文字可复制；未撤回的可引用、转发；都可多选、删除；本人 2 分钟内已发出的可撤回 */
     @Test
     fun actionsFor_rules() = runTest(mainDispatcherRule.testDispatcher) {
         val (vm, _) = newVm()
@@ -213,15 +213,17 @@ class ChatViewModelTest {
         val now = 1_000_000L
         val copy = MessageActionsDialogFragment.ACTION_COPY
         val reply = MessageActionsDialogFragment.ACTION_REPLY
+        val forward = MessageActionsDialogFragment.ACTION_FORWARD
         val select = MessageActionsDialogFragment.ACTION_SELECT
         val retract = MessageActionsDialogFragment.ACTION_RETRACT
         val delete = MessageActionsDialogFragment.ACTION_DELETE
         assertThat(vm.actionsFor(msg(true, MessageState.SENT, now - 60_000), now))
-            .containsExactly(copy, reply, select, retract, delete).inOrder()
-        assertThat(vm.actionsFor(msg(true, MessageState.READ, now - 121_000), now)).containsExactly(copy, reply, select, delete).inOrder()
-        assertThat(vm.actionsFor(msg(true, MessageState.FAILED, now), now)).containsExactly(copy, reply, select, delete).inOrder()
-        assertThat(vm.actionsFor(msg(true, MessageState.SENDING, now), now)).containsExactly(copy, reply, select, delete).inOrder()
-        assertThat(vm.actionsFor(msg(false, MessageState.RECEIVED, now), now)).containsExactly(copy, reply, select, delete).inOrder()
+            .containsExactly(copy, reply, forward, select, retract, delete).inOrder()
+        val common = listOf(copy, reply, forward, select, delete)
+        assertThat(vm.actionsFor(msg(true, MessageState.READ, now - 121_000), now)).containsExactlyElementsIn(common).inOrder()
+        assertThat(vm.actionsFor(msg(true, MessageState.FAILED, now), now)).containsExactlyElementsIn(common).inOrder()
+        assertThat(vm.actionsFor(msg(true, MessageState.SENDING, now), now)).containsExactlyElementsIn(common).inOrder()
+        assertThat(vm.actionsFor(msg(false, MessageState.RECEIVED, now), now)).containsExactlyElementsIn(common).inOrder()
         assertThat(vm.actionsFor(msg(true, MessageState.SENT, now, retracted = true), now)).containsExactly(select, delete).inOrder()
     }
 
@@ -335,6 +337,62 @@ class ChatViewModelTest {
         assertThat(ConversationRepository(holder).observeConversations().first()).isEmpty()
     }
 
+    /** 4.16 逐条转发：每条生成新消息（新 ID、内容相同），跳过已撤回的；退出多选并提示 */
+    @Test
+    fun forward_each() = runTest(mainDispatcherRule.testDispatcher) {
+        val card = cn.android666.im.core.xmpp.extension.msg.MessageContent.Card("10003@im.example.com", "王五")
+        val a = insert("a", 1_000)
+        val b = db.messageDao().insert(
+            MessageEntity(msgId = "b", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = card.type,
+                body = "[名片] 王五", contentJson = cn.android666.im.data.message.MessageJson.encodeContent(card),
+                status = MessageEntity.STATUS_RECEIVED, serverTime = 2_000),
+        )
+        val gone = insert("gone", 3_000)
+        db.messageDao().markRetracted(gone, BOB)
+        val (vm, _) = newVm()
+        vm.startSelection(a)
+
+        vm.events.test {
+            vm.forward(cn.android666.im.ui.forward.ForwardTarget(CAROL, ConversationKind.SINGLE, "王五", ""), setOf(a, b, gone), merged = false)
+            runCurrent()
+            assertThat(awaitItem()).isEqualTo(ChatEvent.Toast(R.string.forward_done))
+        }
+        assertThat(vm.selection.value).isNull()
+        val forwarded = db.messageDao().getByRowIds((1L..20L).toList()).filter { it.conversationId == CAROL }
+        assertThat(forwarded.map { it.body }).containsExactly("b-a", "[名片] 王五").inOrder()
+        assertThat(forwarded.map { it.msgId }).containsNoneOf("a", "b")
+        assertThat(forwarded.all { it.direction == MessageEntity.DIRECTION_OUT && it.status == MessageEntity.STATUS_SENDING }).isTrue()
+        assertThat(cn.android666.im.data.message.MessageJson.decodeContent(forwarded[1].type, forwarded[1].contentJson)).isEqualTo(card)
+        assertThat(db.conversationDao().get(CAROL)!!.type).isEqualTo(ConversationEntity.TYPE_SINGLE)
+    }
+
+    /** 4.16 合并转发：一条 merged 消息，标题为"张三和李四的聊天记录"，条目含发送方、正文、时间 */
+    @Test
+    fun forward_merged() = runTest(mainDispatcherRule.testDispatcher) {
+        db.employeeDao().upsert(
+            listOf(
+                EmployeeEntity("10001@im.example.com", "10001", "张三", "zhangsan", "zs", "d", "", "", "", "", 0, ""),
+                EmployeeEntity(BOB, "10002", "李四", "lisi", "ls", "d", "", "", "", "", 0, ""),
+            ),
+        )
+        val a = insert("a", 1_000)
+        val b = insert("b", 2_000, direction = MessageEntity.DIRECTION_OUT)
+        val (vm, _) = newVm()
+
+        vm.forward(cn.android666.im.ui.forward.ForwardTarget("10001@im.example.com", ConversationKind.SELF, null, ""), setOf(b, a), merged = true)
+        runCurrent()
+
+        val sent = db.messageDao().last("10001@im.example.com")!!
+        assertThat(sent.body).isEqualTo("[聊天记录] 张三和李四的聊天记录")
+        val content = cn.android666.im.data.message.MessageJson.decodeContent(sent.type, sent.contentJson)
+            as cn.android666.im.core.xmpp.extension.msg.MessageContent.Merged
+        assertThat(content.title).isEqualTo("张三和李四的聊天记录")
+        assertThat(content.items.map { it.id }).containsExactly("a", "b").inOrder()
+        assertThat(content.items[0].from).isEqualTo(BOB)
+        assertThat(content.items[0].stamp).isEqualTo(1_000)
+        assertThat(db.conversationDao().get("10001@im.example.com")!!.type).isEqualTo(ConversationEntity.TYPE_SELF)
+    }
+
     /** 撤回未发出（未登录时一直是发送中）的消息：不允许，不提示 */
     @Test
     fun retract_notAllowed_silent() = runTest(mainDispatcherRule.testDispatcher) {
@@ -390,5 +448,6 @@ class ChatViewModelTest {
 
     private companion object {
         const val BOB = "10002@im.example.com"
+        const val CAROL = "10003@im.example.com"
     }
 }

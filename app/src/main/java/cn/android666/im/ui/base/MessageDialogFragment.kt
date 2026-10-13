@@ -28,8 +28,9 @@ class MessageDialogFragment : DialogFragment() {
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val args = requireArguments()
         val requestKey = args.getString(ARG_REQUEST_KEY).orEmpty()
+        val text = args.getString(ARG_MESSAGE_TEXT)
         val builder = MaterialAlertDialogBuilder(requireContext())
-            .setMessage(args.getInt(ARG_MESSAGE))
+            .apply { if (text != null) setMessage(text) else setMessage(args.getInt(ARG_MESSAGE)) }
             .setPositiveButton(args.getInt(ARG_POSITIVE)) { _, _ ->
                 setFragmentResult(requestKey, bundleOf(RESULT_POSITIVE to true))
             }
@@ -49,6 +50,7 @@ class MessageDialogFragment : DialogFragment() {
         private const val ARG_REQUEST_KEY = "requestKey"
         private const val ARG_TITLE = "title"
         private const val ARG_MESSAGE = "message"
+        private const val ARG_MESSAGE_TEXT = "messageText"
         private const val ARG_POSITIVE = "positive"
         private const val ARG_NEGATIVE = "negative"
         private const val ARG_CANCELABLE = "cancelable"
@@ -82,6 +84,37 @@ class MessageDialogFragment : DialogFragment() {
                     ARG_REQUEST_KEY to requestKey,
                     ARG_TITLE to title,
                     ARG_MESSAGE to message,
+                    ARG_POSITIVE to positive,
+                    ARG_NEGATIVE to negative,
+                    ARG_CANCELABLE to cancelable,
+                )
+            }.show(fragmentManager, requestKey)
+        }
+
+        /**
+         * 显示内容为动态文字的对话框（如"发送给 张三？"）；同一个 [requestKey] 的对话框已经在显示时不重复显示。
+         *
+         * @param fragmentManager Activity 的 supportFragmentManager 或 Fragment 的 childFragmentManager
+         * @param requestKey 结果的 key，同时作为 Fragment 的 tag
+         * @param message 内容
+         * @param positive 确定按钮文字
+         * @param negative 取消按钮文字，0 表示没有取消按钮
+         * @param cancelable 能否点返回键或对话框外部关闭（关闭时没有结果）
+         */
+        fun showText(
+            fragmentManager: FragmentManager,
+            requestKey: String,
+            message: String,
+            @StringRes positive: Int,
+            @StringRes negative: Int = 0,
+            cancelable: Boolean = true,
+        ) {
+            if (fragmentManager.findFragmentByTag(requestKey) != null) return
+            MessageDialogFragment().apply {
+                arguments = bundleOf(
+                    ARG_REQUEST_KEY to requestKey,
+                    ARG_TITLE to 0,
+                    ARG_MESSAGE_TEXT to message,
                     ARG_POSITIVE to positive,
                     ARG_NEGATIVE to negative,
                     ARG_CANCELABLE to cancelable,

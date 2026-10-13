@@ -28,6 +28,7 @@ import cn.android666.im.ui.conversation.TimeLabel
  * @property onLongClick 长按消息气泡（操作菜单）
  * @property selfJid 本人 bare JID（引用本人的消息时显示"我"）
  * @property onToggle 多选模式中点击消息（切换选中）
+ * @property onOpen 点击消息气泡（合并转发的聊天记录等需要打开的消息）
  */
 class ChatAdapter(
     private val showReadState: Boolean,
@@ -36,6 +37,7 @@ class ChatAdapter(
     private val onLongClick: (ChatMessage) -> Unit = {},
     private val selfJid: String? = null,
     private val onToggle: (ChatMessage) -> Unit = {},
+    private val onOpen: (ChatMessage) -> Unit = {},
 ) : PagingDataAdapter<ChatListItem, RecyclerView.ViewHolder>(DIFF) {
 
     /** 多选模式中已选中的消息 rowId；不在多选模式时为 null。修改后刷新全部列表项 */
@@ -174,6 +176,21 @@ class ChatAdapter(
     }
 
     /**
+     * 合并转发的气泡：点击查看聊天记录（多选模式中点击为切换选中）。
+     *
+     * @param root 列表项根布局
+     * @param message 消息
+     */
+    private fun bindOpen(root: android.view.View, message: ChatMessage) {
+        val bubble = root.findViewById<android.view.View>(R.id.bubble)
+        if (message.content is cn.android666.im.core.xmpp.extension.msg.MessageContent.Merged) {
+            bubble.setOnClickListener { if (selection == null) onOpen(message) else onToggle(message) }
+        } else {
+            bubble.setOnClickListener(null)
+        }
+    }
+
+    /**
      * 多选模式：显示勾选框，点击整行切换选中；非多选模式隐藏勾选框。
      *
      * @param root 列表项根布局
@@ -181,6 +198,7 @@ class ChatAdapter(
      * @param message 消息
      */
     private fun bindSelection(root: android.view.View, check: android.widget.CheckBox, message: ChatMessage) {
+        bindOpen(root, message)
         val selected = selection
         check.isVisible = selected != null
         check.isChecked = selected?.contains(message.rowId) == true
