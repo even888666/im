@@ -11,6 +11,7 @@ import cn.android666.im.core.xmpp.extension.account.ChangePasswordRequest
 import cn.android666.im.data.account.CredentialStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,8 +66,10 @@ class SessionManager(
     private var pausedAt: Int? = null
 
     init {
-        // 先订阅事件再允许登录，避免错过事件（events 不重放）
-        scope.launch { connectionManager.events.collect(::onConnectionEvent) }
+        // 先订阅事件再允许登录，避免错过事件（events 不重放）。
+        // 用 UNDISPATCHED 在构造函数返回前就完成订阅：普通 launch 要等调度器调度才开始收集，
+        // 如果构造后马上登录，Connected 事件可能在订阅前发出而丢失
+        scope.launch(start = CoroutineStart.UNDISPATCHED) { connectionManager.events.collect(::onConnectionEvent) }
     }
 
     /**
