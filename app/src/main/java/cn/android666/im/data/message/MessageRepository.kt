@@ -73,6 +73,27 @@ class MessageRepository(
     }
 
     /**
+     * 收到送达回执（开发计划 4.5，协议规范 §8.1）。
+     *
+     * @param conversationId 会话 ID（回执发送方的 bare JID）
+     * @param msgId 被确认的消息 ID
+     * @return 是否更新了消息（找不到、已读等情况为 false）
+     */
+    suspend fun markDelivered(conversationId: String, msgId: String): Boolean =
+        databases.require().messageDao().markDelivered(conversationId, msgId) > 0
+
+    /**
+     * 服务器退回了发出的消息（开发计划 4.5，协议规范 §6.4）：标记发送失败。
+     *
+     * @param conversationId 会话 ID（错误报文的 from 的 bare JID，即原接收方）
+     * @param msgId 原消息 ID
+     * @param errorCode 错误码
+     * @return 是否更新了消息
+     */
+    suspend fun markRejected(conversationId: String, msgId: String, errorCode: String): Boolean =
+        databases.require().messageDao().markRejected(conversationId, msgId, errorCode) > 0
+
+    /**
      * 发送文本消息：以"发送中"写库并更新会话，然后交给发送队列（开发计划 4.3）。
      *
      * @param conversationId 会话 ID（对方 bare JID / 群 JID / 本人 bare JID）

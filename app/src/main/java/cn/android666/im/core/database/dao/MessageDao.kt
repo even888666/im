@@ -96,17 +96,33 @@ interface MessageDao {
     suspend fun markResend(rowId: Long): Int
 
     /**
-     * 收到送达回执：发出的消息从"发送中 / 已发送"改为"已送达"（已读、失败的不变）。
+     * 收到送达回执：发出的消息从"发送中 / 已发送"改为"已送达"（已读的不变）。
+     * 超时被标记失败、但实际已经送达的消息（服务器确认丢失）也改为"已送达"并清除失败原因（决策记录 A82）。
      *
      * @param conversationId 会话 ID
      * @param msgId 消息 ID
      * @return 更新的条数
      */
     @Query(
-        "UPDATE message SET status = 2 WHERE conversationId = :conversationId AND msgId = :msgId " +
-            "AND direction = 1 AND status IN (0, 1)",
+        "UPDATE message SET status = 2, errorCode = NULL WHERE conversationId = :conversationId AND msgId = :msgId " +
+            "AND direction = 1 AND status IN (0, 1, 4)",
     )
     suspend fun markDelivered(conversationId: String, msgId: String): Int
+
+    /**
+     * 服务器退回（type='error'）：发出的消息改为"发送失败"并记录错误码（协议规范 §6.2、§6.4）。
+     * 已送达、已读的不变（错误不可能晚于对方的回执，出现时以回执为准）。
+     *
+     * @param conversationId 会话 ID
+     * @param msgId 消息 ID
+     * @param errorCode 错误码：自定义错误码（如 sensitive-word），没有时为标准错误条件（如 service-unavailable）
+     * @return 更新的条数
+     */
+    @Query(
+        "UPDATE message SET status = 4, errorCode = :errorCode WHERE conversationId = :conversationId AND msgId = :msgId " +
+            "AND direction = 1 AND status IN (0, 1)",
+    )
+    suspend fun markRejected(conversationId: String, msgId: String, errorCode: String): Int
 
     /**
      * 收到已读标记：该时间及之前发出的消息都改为"已读"（协议规范 §8.2）。

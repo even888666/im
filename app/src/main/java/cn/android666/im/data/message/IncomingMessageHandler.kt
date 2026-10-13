@@ -23,8 +23,8 @@ import kotlinx.coroutines.launch
  * 收到的消息的分发（开发计划 4.4，Android工程架构.md §4.5、§6.1）：订阅 [XmppClient.incomingMessages]，
  * 按到达顺序逐条处理。
  *
- * 当前处理：单聊的用户可见消息（去重 → 写库 → 更新会话 / 未读 → 回送达回执）。
- * 其余类型在对应的小功能中接入：回执与错误（4.5）、Carbons（4.6）、已读（4.9）、MAM（4.10，由补拉器自己收集）、
+ * 当前处理：单聊的用户可见消息（去重 → 写库 → 更新会话 / 未读 → 回送达回执）、送达回执与服务器退回（4.5）。
+ * 其余类型在对应的小功能中接入：Carbons（4.6）、已读（4.9）、MAM（4.10，由补拉器自己收集）、
  * 撤回（4.12）、正在输入（4.14）、群聊（M6）。
  *
  * @property client XMPP 客户端
@@ -99,11 +99,40 @@ class IncomingMessageHandler(
             null -> Unit
         }
         when {
+            msg.type == "error" -> onError(msg)
             msg.type == "groupchat" -> log.debug("群消息暂未处理（M6）：id={}", msg.msgId)
-            msg.type == "error" -> log.debug("错误消息暂未处理（4.5）：id={}", msg.msgId)
+            msg.receivedId != null -> onReceipt(msg, msg.receivedId)
             msg.content != null && (msg.type == "chat" || msg.type == "normal") -> onChatMessage(msg, self)
             else -> log.debug("暂未处理的消息：type={}，id={}", msg.type, msg.msgId)
         }
+    }
+
+    /**
+     * 送达回执（协议规范 §8.1）：发出的消息改为"已送达"。
+     *
+     * @param msg 回执报文
+     * @param receivedId 被确认的消息 ID
+     */
+    private suspend fun onReceipt(msg: MessageStanza, receivedId: String) {
+        val from = msg.from ?: return
+        val conversationId = IncomingMessageMapper.bareJid(from)
+        val updated = repository.markDelivered(conversationId, receivedId)
+        log.info("送达回执：msgId={}，来自={}，更新={}", receivedId, conversationId, updated)
+    }
+
+    /**
+     * 服务器退回的错误（协议规范 §6.2、§6.4）：对应的发出消息标记失败。错误报文的 id 是原报文的 id，
+     * 对回执、已读等非消息报文的退回找不到对应消息，直接忽略。
+     *
+     * @param msg 错误报文
+     */
+    private suspend fun onError(msg: MessageStanza) {
+        val id = msg.msgId ?: return
+        val from = msg.from ?: return
+        val error = msg.error
+        val code = error?.appErrorCode ?: error?.condition ?: "undefined-condition"
+        val updated = repository.markRejected(IncomingMessageMapper.bareJid(from), id, code)
+        log.warn("消息被退回：id={}，来自={}，错误={}，更新={}", id, from, code, updated)
     }
 
     /**

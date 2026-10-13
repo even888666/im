@@ -259,6 +259,77 @@ class IncomingMessageHandlerTest {
         assertThat(client.sentMessages).isEmpty()
     }
 
+    /** 插入一条发出的消息 */
+    private suspend fun Rig.outgoing(msgId: String, status: Int, conversationId: String = BOB): Long = db.messageDao().insert(
+        MessageEntity(
+            msgId = msgId,
+            conversationId = conversationId,
+            senderJid = "10001@im.example.com",
+            direction = MessageEntity.DIRECTION_OUT,
+            type = "text",
+            body = "x",
+            status = status,
+            errorCode = if (status == MessageEntity.STATUS_FAILED) SendError.TIMEOUT else null,
+            serverTime = 1,
+        ),
+    )
+
+    /** 送达回执（4.5）：已发送 / 超时失败 → 已送达；已读的不回退；其他会话的同 ID 不受影响 */
+    @Test
+    fun receipt_marksDelivered() = runTest {
+        val rig = rig()
+        rig.outgoing("sent", MessageEntity.STATUS_SENT)
+        rig.outgoing("timedOut", MessageEntity.STATUS_FAILED)
+        rig.outgoing("read", MessageEntity.STATUS_READ)
+        rig.outgoing("sent", MessageEntity.STATUS_SENT, conversationId = "10003@im.example.com")
+
+        for (id in listOf("sent", "timedOut", "read")) {
+            client.receive("<message id='rc-$id' from='$BOB/pc'><received xmlns='urn:xmpp:receipts' id='$id'/></message>")
+        }
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "sent")!!.status).isEqualTo(MessageEntity.STATUS_DELIVERED)
+        val timedOut = rig.db.messageDao().get(BOB, "timedOut")!!
+        assertThat(timedOut.status).isEqualTo(MessageEntity.STATUS_DELIVERED)
+        assertThat(timedOut.errorCode).isNull()
+        assertThat(rig.db.messageDao().get(BOB, "read")!!.status).isEqualTo(MessageEntity.STATUS_READ)
+        assertThat(rig.db.messageDao().get("10003@im.example.com", "sent")!!.status).isEqualTo(MessageEntity.STATUS_SENT)
+        // 回执本身不是消息：不入库、不计未读
+        assertThat(rig.db.conversationDao().get(BOB)).isNull()
+    }
+
+    /** 服务器退回（4.5，协议规范 §6.4）：敏感词 → 失败并记录自定义错误码；没有自定义码时记录标准条件 */
+    @Test
+    fun error_marksRejected() = runTest {
+        val rig = rig()
+        rig.outgoing("bad", MessageEntity.STATUS_SENT)
+        rig.outgoing("nobody", MessageEntity.STATUS_SENDING, conversationId = "99999@im.example.com")
+        rig.outgoing("delivered", MessageEntity.STATUS_DELIVERED)
+
+        client.receive(
+            "<message xmlns='jabber:client' type='error' id='bad' from='$BOB'><error type='modify'>" +
+                "<policy-violation xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/>" +
+                "<app-error xmlns='urn:android666:im:error:1' code='sensitive-word'/></error></message>",
+        )
+        client.receive(
+            "<message type='error' id='nobody' from='99999@im.example.com'><error type='cancel'>" +
+                "<service-unavailable xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/></error></message>",
+        )
+        client.receive(
+            "<message type='error' id='delivered' from='$BOB'><error type='cancel'>" +
+                "<service-unavailable xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/></error></message>",
+        )
+        // 回执被退回：找不到对应消息，忽略
+        client.receive("<message type='error' id='r-1' from='$BOB/pc'><error type='cancel'/></message>")
+        runCurrent()
+
+        val bad = rig.db.messageDao().get(BOB, "bad")!!
+        assertThat(bad.status).isEqualTo(MessageEntity.STATUS_FAILED)
+        assertThat(bad.errorCode).isEqualTo("sensitive-word")
+        assertThat(rig.db.messageDao().get("99999@im.example.com", "nobody")!!.errorCode).isEqualTo("service-unavailable")
+        assertThat(rig.db.messageDao().get(BOB, "delivered")!!.status).isEqualTo(MessageEntity.STATUS_DELIVERED)
+    }
+
     private companion object {
         const val BOB = "10002@im.example.com"
     }
