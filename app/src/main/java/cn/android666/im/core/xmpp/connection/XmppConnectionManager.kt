@@ -135,6 +135,8 @@ class XmppConnectionManager(
      * 请求立即重连（网络恢复、回到前台时调用）：重置退避，正在等待的重连立即执行。已连接时无效果。
      */
     fun reconnectNow() {
+        // 已连接时忽略：否则信号会留在通道里，下次断线时跳过退避直接重连
+        if (state.value is ConnectionState.Authenticated) return
         policy.reset()
         reconnectSignal.trySend(Unit)
     }

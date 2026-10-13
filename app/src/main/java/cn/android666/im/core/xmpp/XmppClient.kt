@@ -59,6 +59,17 @@ interface XmppClient {
     suspend fun discoverCapabilities(): ServerCapabilities
 
     /**
+     * 告诉服务器客户端是否处于活跃状态（XEP-0352 Client State Indication，协议规范 §2.3）：
+     * 进入后台时设为非活跃，服务器会延迟或丢弃非必要的推送（如 presence 变化）以省电；回到前台时恢复活跃。
+     *
+     * 记住期望状态：未连接时只记录，建立新流（非流恢复）后自动补发（新流在服务器端默认为活跃）。
+     * 服务器不支持 CSI 时忽略。
+     *
+     * @param active true 为活跃（前台），false 为非活跃（后台）
+     */
+    suspend fun setActive(active: Boolean)
+
+    /**
      * 发送初始在线状态（协议规范 §2.2 第 8 步）。服务器收到后才开始投递离线消息，
      * 所以必须在获取 Roster 之后、开始收消息之前调用。
      *

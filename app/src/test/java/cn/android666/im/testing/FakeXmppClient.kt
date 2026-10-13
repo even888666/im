@@ -84,6 +84,15 @@ class FakeXmppClient : XmppClient {
         }
     }
 
+    /** 最近一次 [setActive] 设置的状态 */
+    var active = true
+        private set
+
+    override suspend fun setActive(active: Boolean) {
+        calls += "active:$active"
+        this.active = active
+    }
+
     override suspend fun sendInitialPresence() {
         calls += "presence"
         throwPendingError()

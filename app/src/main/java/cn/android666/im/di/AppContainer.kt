@@ -9,6 +9,7 @@ import cn.android666.im.core.security.AesGcmCredentialCipher
 import cn.android666.im.core.security.AndroidKeyStoreKeyProvider
 import cn.android666.im.core.security.RootCaTrust
 import cn.android666.im.data.account.CredentialStore
+import cn.android666.im.data.session.AppVisibilityHandler
 import cn.android666.im.data.session.SessionManager
 import cn.android666.im.data.session.steps.AccountStatusStep
 import cn.android666.im.data.session.steps.CapabilitiesStep
@@ -121,6 +122,11 @@ class AppContainer(context: Context) {
             ),
             scope = applicationScope,
         )
+    }
+
+    /** 前后台切换处理（CSI、回到前台立即重连） */
+    val appVisibilityHandler: AppVisibilityHandler by lazy {
+        AppVisibilityHandler(xmppClient, connectionManager, applicationScope)
     }
 
     /** 日志文件名前缀管理：登录成功后切换为工号 */

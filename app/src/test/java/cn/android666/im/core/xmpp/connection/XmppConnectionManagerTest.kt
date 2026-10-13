@@ -182,6 +182,25 @@ class XmppConnectionManagerTest {
         assertThat(manager.state.value).isInstanceOf(ConnectionState.Authenticated::class.java)
     }
 
+    /** 已连接时调用 reconnectNow（例如回到前台）不留下信号，之后断线时仍按退避等待 */
+    @Test
+    fun reconnectNow_whileConnected_doesNotSkipLaterBackoff() = runTest {
+        val manager = newManager()
+        manager.login(credential)
+        runCurrent()
+        manager.reconnectNow()
+        client.reconnectResults += XmppException.ConnectionFailed("超时")
+
+        client.simulateDisconnect(DisconnectReason.Network(null))
+        runCurrent() // 第 1 次立即重连，失败
+        advanceTimeBy(1_000)
+
+        // 第 2 次应在 2 秒时才执行，不会因为残留的信号提前
+        assertThat(client.calls.count { it == "reconnect" }).isEqualTo(1)
+        advanceTimeBy(1_001)
+        assertThat(client.calls.count { it == "reconnect" }).isEqualTo(2)
+    }
+
     /** 后台登录：网络原因失败时持续重试，成功后发出 Connected（非重连） */
     @Test
     fun start_retriesLoginUntilSuccess() = runTest {

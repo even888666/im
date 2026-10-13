@@ -143,6 +143,20 @@ class SmackXmppClientIT {
         assertThat((e as XmppException.StanzaError).condition).isAnyOf("service-unavailable", "feature-not-implemented")
     }
 
+    /** 2.16：前后台切换（CSI）后连接保持正常，仍能收发 IQ */
+    @Test
+    fun clientState_backgroundThenForeground_connectionStillWorks() = runBlocking {
+        val client = newClient()
+        client.setActive(false) // 未连接时只记录，登录后补发
+        client.login(credential())
+
+        client.setActive(true)
+        client.setActive(false)
+
+        assertThat(client.checkAlive()).isTrue()
+        assertThat(client.connectionState.value).isEqualTo(ConnectionState.Authenticated(resumed = false))
+    }
+
     /** 未登录时调用请求类方法抛出 NotConnected */
     @Test
     fun requestWithoutLogin_notConnected() = runBlocking {

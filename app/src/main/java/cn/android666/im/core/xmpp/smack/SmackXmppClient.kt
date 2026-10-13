@@ -30,6 +30,7 @@ import org.jivesoftware.smack.sm.predicates.Predicate
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration
 import org.jivesoftware.smackx.carbons.CarbonManager
+import org.jivesoftware.smackx.csi.ClientStateIndicationManager
 import org.jivesoftware.smackx.disco.ServiceDiscoveryManager
 import org.jivesoftware.smackx.httpfileupload.HttpFileUploadManager
 import org.jivesoftware.smackx.ping.PingManager
@@ -48,6 +49,7 @@ import kotlin.system.measureTimeMillis
  * - 关闭 Smack 自带的自动重连，重连策略由 XmppConnectionManager 统一负责（开发计划 2.6）；
  * - 心跳：60 秒没有收到任何数据时发送 XEP-0199 ping，10 秒内无响应视为连接失效，立即断开并交给重连逻辑；
  * - 流管理确认：每发送一条消息或每 5 个 stanza 请求一次 `<r/>`（协议规范 §2.3）；
+ * - 前后台：[setActive] 发送 XEP-0352 CSI，新流建立后自动补发非活跃状态；
  * - 报文经 [XmppLogDebugger] 脱敏后写入 xmpp 日志。
  *
  * 所有阻塞调用都在 [DispatcherProvider.io] 上执行；login / reconnect / logout 用互斥锁串行化，
@@ -77,6 +79,10 @@ class SmackXmppClient(
 
     /** 串行化登录、重连、退出 */
     private val mutex = Mutex()
+
+    /** 期望的 CSI 状态：true 为活跃（前台）。默认活跃，与服务器对新流的默认值一致 */
+    @Volatile
+    private var desiredActive = true
 
     /** 当前连接；只在持有 [mutex] 时修改 */
     @Volatile
@@ -120,6 +126,7 @@ class SmackXmppClient(
                     newConnection.login()
                 }
                 connection = newConnection
+                applyClientState(newConnection, resumed = false)
                 state.value = ConnectionState.Authenticated(resumed = false)
                 log.info(
                     "登录成功：{}，耗时 {}ms，流管理={}",
@@ -155,6 +162,7 @@ class SmackXmppClient(
                     current.login()
                 }
                 val resumed = current.streamWasResumed()
+                applyClientState(current, resumed)
                 state.value = ConnectionState.Authenticated(resumed)
                 log.info("重连成功：流恢复={}，耗时 {}ms", resumed, cost)
                 LoginResult(resumed)
@@ -192,6 +200,44 @@ class SmackXmppClient(
             .onFailure { log.warn("发现文件上传服务失败", it) }
             .getOrNull()
         ServerCapabilities(features, maxFileSize)
+    }
+
+    override suspend fun setActive(active: Boolean) {
+        desiredActive = active
+        withContext(dispatchers.io) {
+            val current = connection?.takeIf { it.isAuthenticated } ?: return@withContext
+            sendClientState(current, active)
+        }
+    }
+
+    /**
+     * 新流建立后按期望状态补发 CSI：流恢复时服务器保留了原来的状态，不需要补发；
+     * 新流默认为活跃，只有期望为非活跃时才需要发送。
+     *
+     * @param target 刚认证的连接
+     * @param resumed 是否流恢复
+     */
+    private fun applyClientState(target: XMPPTCPConnection, resumed: Boolean) {
+        if (!resumed && !desiredActive) sendClientState(target, active = false)
+    }
+
+    /**
+     * 发送 CSI 状态；服务器不支持或发送失败时只记录日志（不影响连接）。
+     *
+     * @param target 连接
+     * @param active 是否活跃
+     */
+    private fun sendClientState(target: XMPPTCPConnection, active: Boolean) {
+        if (!ClientStateIndicationManager.isSupported(target)) {
+            log.info("服务器不支持 CSI，忽略前后台状态")
+            return
+        }
+        try {
+            if (active) ClientStateIndicationManager.active(target) else ClientStateIndicationManager.inactive(target)
+            log.info("已发送 CSI：{}", if (active) "active（前台）" else "inactive（后台）")
+        } catch (e: Exception) {
+            log.warn("发送 CSI 失败", e)
+        }
     }
 
     override suspend fun sendInitialPresence() = request("发送初始 presence") { current ->

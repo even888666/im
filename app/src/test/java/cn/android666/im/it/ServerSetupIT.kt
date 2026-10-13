@@ -183,6 +183,14 @@ class ServerSetupIT {
         assertThat(CarbonManager.getInstanceFor(connection).isSupportedByServer).isTrue()
     }
 
+    /** 1.4 / 2.16：服务器支持 Client State Indication（XEP-0352） */
+    @Test
+    fun clientStateIndication_supported() {
+        val connection = login(1)
+
+        assertThat(org.jivesoftware.smackx.csi.ClientStateIndicationManager.isSupported(connection)).isTrue()
+    }
+
     /** 1.4：同一 resource 重复登录时，旧连接收到 conflict 并被断开（协议规范 §2.4） */
     @Test
     fun sameResourceLogin_kicksOldConnectionWithConflict() {
