@@ -2,7 +2,11 @@ package cn.android666.im.di
 
 import android.content.Context
 import cn.android666.im.BuildConfig
+import cn.android666.im.core.datastore.settingsDataStore
+import cn.android666.im.core.security.AesGcmCredentialCipher
+import cn.android666.im.core.security.AndroidKeyStoreKeyProvider
 import cn.android666.im.core.security.RootCaTrust
+import cn.android666.im.data.account.CredentialStore
 import cn.android666.im.core.xmpp.ServerConfig
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.smack.SmackXmppClient
@@ -74,6 +78,11 @@ class AppContainer(context: Context) {
             clock = clock,
             logStanzas = { BuildConfig.DEBUG },
         )
+    }
+
+    /** 登录凭证存储：工号明文、密码用 Android Keystore 中的密钥加密 */
+    val credentialStore: CredentialStore by lazy {
+        CredentialStore(appContext.settingsDataStore, AesGcmCredentialCipher(AndroidKeyStoreKeyProvider()))
     }
 
     /** 日志文件名前缀管理：登录成功后切换为工号 */

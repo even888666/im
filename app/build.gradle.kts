@@ -156,6 +156,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.logback.android)
     implementation(libs.androidx.startup.runtime)
+    implementation(libs.androidx.datastore.preferences)
     // XMPP（Smack），只允许 core/xmpp/smack 包引用（Android工程架构.md §3.3）
     implementation(libs.smack.android.extensions)
     implementation(libs.smack.tcp)

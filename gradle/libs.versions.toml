@@ -25,6 +25,7 @@ androidxStartup = "1.2.0"
 # Smack：用户确认直接使用最新正式版（4.5.x）
 smack = "4.5.0"
 desugarJdkLibs = "2.1.5"
+datastore = "1.2.1"
 # 测试
 androidxTestCore = "1.7.0"
 turbine = "1.2.1"
@@ -54,6 +55,7 @@ smack-tcp = { module = "org.igniterealtime.smack:smack-tcp", version.ref = "smac
 smack-experimental = { module = "org.igniterealtime.smack:smack-experimental", version.ref = "smack" }
 # JVM 版 Smack，仅用于连接本地 Openfire 的集成测试
 smack-java11 = { module = "org.igniterealtime.smack:smack-java11", version.ref = "smack" }
+androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 # 测试
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }

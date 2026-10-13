@@ -7,9 +7,14 @@
     <!-- 监听网络变化，断网 / 恢复 / 切换网络时及时重连（core.network.AndroidNetworkMonitor） -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+        关闭备份（allowBackup=false，Android 12+ 另见 data_extraction_rules.xml）：
+        企业 IM 的聊天记录、加密凭证不能通过 adb backup、云备份或设备迁移导出（功能清单 §14）；
+        凭证用 Android Keystore 中的密钥加密，密钥本身也无法迁移，恢复出来也无法解密。
+    -->
     <application
         android:name=".App"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:networkSecurityConfig="@xml/network_security_config"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
