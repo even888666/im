@@ -188,6 +188,26 @@ class MessagingIT {
         }
     }
 
+    /** 撤回（开发计划 4.12，协议规范 §8.4）：经服务器转发后 retract 与 fallback 完整（biz 插件的校验见 4.20） */
+    @Test
+    fun retract_delivered(): Unit = runBlocking {
+        val a = login(5)
+        val b = login(6)
+        val id = UUID.randomUUID().toString()
+
+        coroutineScope {
+            val original = expect(b) { it.message.msgId == id }
+            a.sendMessage(MessageCodec.chat(jidB, id, "发错了", MessageContent.Text), TIMEOUT)
+            original.await()
+
+            val retract = expect(b) { it.message.retractId == id }
+            a.sendMessage(MessageCodec.retract(jidB, id, "张三撤回了一条消息", UUID.randomUUID().toString()), TIMEOUT)
+            val msg = retract.await().message
+            assertThat(msg.body).isEqualTo("张三撤回了一条消息")
+            assertThat(msg.content).isNull()
+        }
+    }
+
     /**
      * Carbons 多端同步（开发计划 4.6，协议规范 §11.1）：A 的 android 端和 pc 端同时在线，
      * pc 端发出的、pc 端收到的单聊消息都抄送到 android 端；pc 端发给"文件传输助手"（本人 bare JID）的消息 android 端也能收到。

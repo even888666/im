@@ -17,6 +17,7 @@ import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.ReadMarkers
+import cn.android666.im.data.message.Retractions
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.data.sync.HistoryLoader
@@ -207,7 +208,19 @@ class AppContainer(context: Context) {
 
     /** 收到的消息的分发：去重写库、回执、已读 */
     val incomingMessageHandler: IncomingMessageHandler by lazy {
-        IncomingMessageHandler(xmppClient, messageRepository, readMarkers, serverClock, idGenerator, selfJid, applicationScope)
+        IncomingMessageHandler(xmppClient, messageRepository, readMarkers, retractions, serverClock, idGenerator, selfJid, applicationScope)
+    }
+
+    /** 撤回 */
+    val retractions: Retractions by lazy {
+        Retractions(
+            client = xmppClient,
+            repository = messageRepository,
+            serverClock = serverClock,
+            ids = idGenerator,
+            selfJid = selfJid,
+            selfName = { selfJid()?.let { orgRepository.employee(it)?.name } },
+        )
     }
 
     /** 前后台切换处理（CSI、回到前台立即重连、按需同步组织架构） */

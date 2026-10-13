@@ -24,14 +24,15 @@ import kotlinx.coroutines.launch
  * 按到达顺序逐条处理。
  *
  * 当前处理：单聊的用户可见消息（去重 → 写库 → 更新会话 / 未读 → 回送达回执）、送达回执与服务器退回（4.5）、
- * Carbons 多端同步与文件传输助手（4.6）、已读标记（4.9）。
+ * Carbons 多端同步与文件传输助手（4.6）、已读标记（4.9）、撤回（4.12）。
  * MAM 补拉的消息由 MamSyncer 收集后调用 [applyArchived]（4.10）。
  * 其余类型在对应的小功能中接入：
- * 撤回（4.12）、正在输入（4.14）、群聊（M6）。
+ * 正在输入（4.14）、群聊（M6）。
  *
  * @property client XMPP 客户端
  * @property repository 消息仓库
  * @property readMarkers 已读标记（正在查看的会话收到新消息时发送已读；其他端已读的同步）
+ * @property retractions 撤回（本端发出的撤回被服务器拒绝时恢复）
  * @property serverClock 服务器时间（实时消息的时间）
  * @property ids ID 生成器（回执报文的 ID、缺少 ID 的消息）
  * @property selfJid 本人 bare JID；未登录时为 null
@@ -41,6 +42,7 @@ class IncomingMessageHandler(
     private val client: XmppClient,
     private val repository: MessageRepository,
     private val readMarkers: ReadMarkers,
+    private val retractions: Retractions,
     private val serverClock: ServerClock,
     private val ids: IdGenerator,
     private val selfJid: () -> String?,
@@ -93,6 +95,7 @@ class IncomingMessageHandler(
                 readMarkers.onMarkedElsewhere(peer, msg.displayedId)
             }
             msg.displayedId != null -> onDisplayed(msg, msg.displayedId)
+            msg.retractId != null -> onRetract(msg, msg.retractId, sender, self)
             msg.content != null && isChatType(msg) && sender == self -> {
                 val peer = msg.to?.let(IncomingMessageMapper::bareJid) ?: return
                 saveOwn(msg, peer, self, "补拉", envelope.stanzaId)
@@ -148,6 +151,7 @@ class IncomingMessageHandler(
             msg.type == "groupchat" -> log.debug("群消息暂未处理（M6）：id={}", msg.msgId)
             msg.receivedId != null -> onReceipt(msg, msg.receivedId)
             msg.displayedId != null -> onDisplayed(msg, msg.displayedId)
+            msg.retractId != null -> msg.from?.let { onRetract(msg, msg.retractId, IncomingMessageMapper.bareJid(it), self) }
             msg.content != null && isChatType(msg) -> onChatMessage(msg, self)
             else -> log.debug("暂未处理的消息：type={}，id={}", msg.type, msg.msgId)
         }
@@ -180,6 +184,38 @@ class IncomingMessageHandler(
     }
 
     /**
+     * 撤回（开发计划 4.12，协议规范 §8.4）：原消息替换为撤回提示；原消息还没收到时插入占位记录。
+     * 单聊中只能撤回自己发的消息，撤回者与原消息发送方不一致时忽略（防止伪造）。
+     *
+     * @param msg 撤回报文
+     * @param retractId 被撤回的消息 ID
+     * @param retractor 撤回者 bare JID
+     * @param self 本人 bare JID
+     */
+    private suspend fun onRetract(msg: MessageStanza, retractId: String, retractor: String, self: String) {
+        val outgoing = retractor == self
+        // 本人撤回：会话为接收方（文件传输助手为本人）；对方撤回：会话为对方
+        val conversationId = if (outgoing) msg.to?.let(IncomingMessageMapper::bareJid) ?: return else retractor
+        val existing = repository.find(conversationId, retractId)
+        if (existing != null && existing.senderJid != retractor) {
+            log.warn("撤回者不是原消息的发送方，忽略：msgId={}，撤回者={}，发送方={}", retractId, retractor, existing.senderJid)
+            return
+        }
+        val notice = if (outgoing) Retractions.SELF_NOTICE else msg.body?.takeIf { it.isNotBlank() } ?: Retractions.PEER_NOTICE
+        val type = if (conversationId == self) ConversationEntity.TYPE_SELF else ConversationEntity.TYPE_SINGLE
+        val retracted = repository.applyRetract(
+            conversationId = conversationId,
+            msgId = retractId,
+            retractedBy = retractor,
+            direction = if (outgoing) MessageEntity.DIRECTION_OUT else MessageEntity.DIRECTION_IN,
+            time = msg.delayStamp ?: serverClock.nowMillis(),
+            notice = notice,
+            conversationType = type,
+        )
+        log.info("撤回：msgId={}，会话={}，撤回者={}，原消息已收到={}，生效={}", retractId, conversationId, retractor, existing != null, retracted != null)
+    }
+
+    /**
      * 服务器退回的错误（协议规范 §6.2、§6.4）：对应的发出消息标记失败。错误报文的 id 是原报文的 id，
      * 对回执、已读等非消息报文的退回找不到对应消息，直接忽略。
      *
@@ -190,6 +226,8 @@ class IncomingMessageHandler(
         val from = msg.from ?: return
         val error = msg.error
         val code = error?.appErrorCode ?: error?.condition ?: "undefined-condition"
+        // 本端发出的撤回被拒绝（超时、无权限）：恢复原消息
+        if (retractions.onRejected(id, code)) return
         val updated = repository.markRejected(IncomingMessageMapper.bareJid(from), id, code)
         log.warn("消息被退回：id={}，来自={}，错误={}，更新={}", id, from, code, updated)
     }
@@ -213,6 +251,8 @@ class IncomingMessageHandler(
             val peer = IncomingMessageMapper.bareJid(to)
             if (msg.content != null && isChatType(msg)) {
                 saveOwn(msg, peer, self, "抄送")
+            } else if (msg.retractId != null) {
+                onRetract(msg, msg.retractId, self, self)
             } else if (msg.displayedId != null) {
                 // 本人在其他端看过了这个会话：按剩余的未读消息更新未读数（多端已读同步，协议规范 §8.2）
                 val remaining = repository.applyReadElsewhere(peer, msg.displayedId)
@@ -227,6 +267,7 @@ class IncomingMessageHandler(
         when {
             msg.receivedId != null -> onReceipt(msg, msg.receivedId)
             msg.displayedId != null -> onDisplayed(msg, msg.displayedId)
+            msg.retractId != null -> msg.from?.let { onRetract(msg, msg.retractId, IncomingMessageMapper.bareJid(it), self) }
             msg.content != null && isChatType(msg) -> onChatMessage(msg, self, CARBON_RECEIVED)
             else -> log.debug("其他端收到的非消息报文：id={}", msg.msgId)
         }

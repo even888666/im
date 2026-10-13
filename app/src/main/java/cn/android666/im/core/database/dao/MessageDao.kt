@@ -194,6 +194,38 @@ interface MessageDao {
     suspend fun last(conversationId: String): MessageEntity?
 
     /**
+     * 标记撤回（开发计划 4.12）：清空正文和内容（本地不再保留被撤回的内容），记录撤回者。
+     *
+     * @param rowId rowId
+     * @param retractedBy 撤回者 bare JID
+     */
+    @Query("UPDATE message SET retracted = 1, retractedBy = :retractedBy, body = '', contentJson = NULL WHERE rowId = :rowId")
+    suspend fun markRetracted(rowId: Long, retractedBy: String)
+
+    /**
+     * 撤回被服务器拒绝时恢复（本端先标记了撤回）。正文和内容已清空，由调用方传回原值。
+     *
+     * @param rowId rowId
+     * @param body 原正文
+     * @param contentJson 原内容
+     */
+    @Query("UPDATE message SET retracted = 0, retractedBy = NULL, body = :body, contentJson = :contentJson WHERE rowId = :rowId")
+    suspend fun unmarkRetracted(rowId: Long, body: String, contentJson: String?)
+
+    /**
+     * 会话中从某时间起（含）对方发来的未撤回消息数（判断被撤回的消息是否在未读范围内）。
+     *
+     * @param conversationId 会话 ID
+     * @param fromTime 时间（含）
+     * @return 条数
+     */
+    @Query(
+        "SELECT COUNT(*) FROM message WHERE conversationId = :conversationId AND direction = 0 " +
+            "AND retracted = 0 AND serverTime >= :fromTime",
+    )
+    suspend fun countIncomingFrom(conversationId: String, fromTime: Long): Int
+
+    /**
      * 会话中最早的一条消息（聊天页向服务器加载更早的历史时作为起点）。
      *
      * @param conversationId 会话 ID

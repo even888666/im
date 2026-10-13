@@ -14,7 +14,12 @@ import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.conversation.toEntityType
 import cn.android666.im.data.message.MessageRepository
+import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.data.message.ChatMessage
 import cn.android666.im.data.message.ReadMarkers
+import cn.android666.im.data.message.RetractResult
+import cn.android666.im.data.message.Retractions
+import cn.android666.im.data.message.canRetract
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.data.sync.HistoryLoader
 import kotlinx.coroutines.CancellationException
@@ -49,6 +54,7 @@ sealed interface ChatEvent {
  * @property messages 消息仓库
  * @property conversations 会话仓库（清除未读）
  * @property readMarkers 已读标记（单聊打开时发送）
+ * @property retractions 撤回
  * @param org 组织架构（标题显示对方姓名）
  * @param history 从服务器加载更早历史（开发计划 4.11）；null 表示只显示本地消息
  */
@@ -58,6 +64,7 @@ class ChatViewModel(
     private val messages: MessageRepository,
     private val conversations: ConversationRepository,
     private val readMarkers: ReadMarkers,
+    private val retractions: Retractions,
     org: OrgRepository,
     history: HistoryLoader? = null,
 ) : ViewModel() {
@@ -84,6 +91,51 @@ class ChatViewModel(
 
     /** 一次性事件 */
     val events: Flow<ChatEvent> = eventChannel.receiveAsFlow()
+
+    init {
+        // 撤回被服务器拒绝（超时、无权限）：提示
+        viewModelScope.launch {
+            retractions.rejections.collect { code ->
+                eventChannel.send(ChatEvent.Toast(if (code == "retract-forbidden") R.string.chat_retract_forbidden else R.string.chat_retract_too_late))
+            }
+        }
+    }
+
+    /**
+     * 长按消息时可用的操作：文字消息可复制；本人 2 分钟内发出的消息可撤回。
+     *
+     * @param message 消息
+     * @param now 当前服务器时间（毫秒）
+     * @return 操作（MessageActionsDialogFragment.ACTION_*）
+     */
+    fun actionsFor(message: ChatMessage, now: Long = messages.serverNowMillis()): List<String> = buildList {
+        if (!message.retracted && message.content is MessageContent.Text) add(MessageActionsDialogFragment.ACTION_COPY)
+        if (message.canRetract(now)) add(MessageActionsDialogFragment.ACTION_RETRACT)
+    }
+
+    /**
+     * 撤回一条本人发出的消息。
+     *
+     * @param rowId 消息 rowId
+     */
+    fun retract(rowId: Long) {
+        viewModelScope.launch {
+            val result = try {
+                retractions.retract(rowId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("撤回出错：rowId={}", rowId, e)
+                RetractResult.Failed
+            }
+            log.info("撤回：rowId={}，结果={}", rowId, result)
+            when (result) {
+                RetractResult.Success, RetractResult.NotAllowed -> Unit
+                RetractResult.TooLate -> eventChannel.send(ChatEvent.Toast(R.string.chat_retract_too_late))
+                RetractResult.Failed -> eventChannel.send(ChatEvent.Toast(R.string.chat_retract_failed))
+            }
+        }
+    }
 
     /**
      * 发送文本。空白不发送；超过 5000 字提示。

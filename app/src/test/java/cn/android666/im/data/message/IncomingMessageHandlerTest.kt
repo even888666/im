@@ -59,12 +59,14 @@ class IncomingMessageHandlerTest {
      * @property repository 消息仓库
      * @property db 数据库
      * @property readMarkers 已读标记
+     * @property retractions 撤回
      */
     private class Rig(
         val handler: IncomingMessageHandler,
         val repository: MessageRepository,
         val db: ImDatabase,
         val readMarkers: ReadMarkers,
+        val retractions: Retractions,
     )
 
     /**
@@ -93,9 +95,10 @@ class IncomingMessageHandlerTest {
         val queue = SendQueue(client, newHolder, backgroundScope, clock)
         val repository = MessageRepository(newHolder, queue, ServerClock(clock), ids, selfJid)
         val readMarkers = ReadMarkers(client, repository, ConversationRepository(newHolder), ids)
-        val handler = IncomingMessageHandler(client, repository, readMarkers, ServerClock(clock), ids, selfJid, backgroundScope)
+        val retractions = Retractions(client, repository, ServerClock(clock), ids, selfJid, selfName = { "张三" })
+        val handler = IncomingMessageHandler(client, repository, readMarkers, retractions, ServerClock(clock), ids, selfJid, backgroundScope)
         runCurrent()
-        return Rig(handler, repository, db, readMarkers)
+        return Rig(handler, repository, db, readMarkers, retractions)
     }
 
     /** 对方发来的文本消息（协议规范 §6.1） */
@@ -579,6 +582,167 @@ class IncomingMessageHandlerTest {
         val before = client.sentMessages.size
         rig.readMarkers.markConversationRead(BOB)
         assertThat(client.sentMessages.size).isEqualTo(before)
+    }
+
+    /** 撤回报文 */
+    private fun retract(id: String, from: String = "$BOB/pc", to: String = SELF, body: String = "李四撤回了一条消息") =
+        "<message xmlns='jabber:client' type='chat' id='x-$id' from='$from' to='$to'><body>$body</body>" +
+            "<retract xmlns='urn:xmpp:message-retract:1' id='$id'/>" +
+            "<fallback xmlns='urn:xmpp:fallback:0' for='urn:xmpp:message-retract:1'/><store xmlns='urn:xmpp:hints'/></message>"
+
+    /** 4.12：对方撤回已收到的未读消息：清空内容、未读减 1、预览为撤回提示；撤回报文本身不入库、不计未读 */
+    @Test
+    fun retract_afterOriginal() = runTest {
+        val rig = rig()
+        client.receive(chat("m1", body = "第一条"))
+        client.receive(chat("m2", body = "说错了"))
+        runCurrent()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(2)
+
+        client.receive(retract("m2"))
+        runCurrent()
+
+        val m2 = rig.db.messageDao().get(BOB, "m2")!!
+        assertThat(m2.retracted).isTrue()
+        assertThat(m2.retractedBy).isEqualTo(BOB)
+        assertThat(m2.body).isEmpty()
+        val conversation = rig.db.conversationDao().get(BOB)!!
+        assertThat(conversation.unreadCount).isEqualTo(1)
+        assertThat(conversation.lastMsgPreview).isEqualTo("李四撤回了一条消息")
+        assertThat(rig.db.messageDao().get(BOB, "x-m2")).isNull()
+
+        // 重复的撤回不再生效
+        client.receive(retract("m2"))
+        runCurrent()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(1)
+    }
+
+    /** 已读后撤回：未读不变；不是最后一条时预览不变 */
+    @Test
+    fun retract_readOlderMessage() = runTest {
+        val rig = rig()
+        client.receive(chat("m1", body = "旧的"))
+        runCurrent()
+        rig.db.conversationDao().clearUnread(BOB)
+        client.receive(chat("m2", body = "新的"))
+        runCurrent()
+
+        client.receive(retract("m1"))
+        runCurrent()
+
+        val conversation = rig.db.conversationDao().get(BOB)!!
+        assertThat(conversation.unreadCount).isEqualTo(1)
+        assertThat(conversation.lastMsgPreview).isEqualTo("新的")
+    }
+
+    /** 先收到撤回、后收到原消息（补拉顺序错乱）：插入已撤回的占位，原消息到达后仍显示为已撤回，不计未读 */
+    @Test
+    fun retract_beforeOriginal_placeholder() = runTest {
+        val rig = rig()
+
+        client.receive(retract("late"))
+        runCurrent()
+        val placeholder = rig.db.messageDao().get(BOB, "late")!!
+        assertThat(placeholder.retracted).isTrue()
+        assertThat(placeholder.direction).isEqualTo(MessageEntity.DIRECTION_IN)
+
+        client.receive(chat("late", body = "原消息"))
+        runCurrent()
+
+        val message = rig.db.messageDao().get(BOB, "late")!!
+        assertThat(message.retracted).isTrue()
+        assertThat(message.body).isEmpty()
+        assertThat(rig.db.conversationDao().get(BOB)!!.unreadCount).isEqualTo(0)
+    }
+
+    /** 单聊中撤回别人的消息：忽略（防伪造） */
+    @Test
+    fun retract_notSender_ignored() = runTest {
+        val rig = rig()
+        rig.db.messageDao().insert(outgoingAt("mine", 1))
+
+        client.receive(retract("mine"))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "mine")!!.retracted).isFalse()
+    }
+
+    /** 本人在其他端撤回（Carbons sent）：本人消息显示"你撤回了一条消息" */
+    @Test
+    fun retract_fromOtherDevice() = runTest {
+        val rig = rig()
+        rig.db.messageDao().insert(outgoingAt("mine", 1))
+
+        client.receive(carbon("sent", retract("mine", from = "$SELF/pc", to = BOB, body = "张三撤回了一条消息")))
+        runCurrent()
+
+        assertThat(rig.db.messageDao().get(BOB, "mine")!!.retractedBy).isEqualTo(SELF)
+        assertThat(rig.db.conversationDao().get(BOB)!!.lastMsgPreview).isEqualTo(Retractions.SELF_NOTICE)
+    }
+
+    /** 本端撤回：2 分钟内、已发出的本人消息；报文带降级文本；本地显示"你撤回了一条消息" */
+    @Test
+    fun retract_send() = runTest {
+        val rig = rig()
+        val sent = rig.repository.sendText(BOB, ConversationEntity.TYPE_SINGLE, "发错了")
+        runCurrent()
+
+        assertThat(rig.retractions.retract(sent.rowId)).isEqualTo(RetractResult.Success)
+
+        val stanza = MessageCodec.parse(client.sentMessages.last()).message
+        assertThat(stanza.retractId).isEqualTo(sent.msgId)
+        assertThat(stanza.to).isEqualTo(BOB)
+        assertThat(stanza.body).isEqualTo("张三撤回了一条消息")
+        val message = rig.db.messageDao().getByRowId(sent.rowId)!!
+        assertThat(message.retracted).isTrue()
+        assertThat(rig.db.conversationDao().get(BOB)!!.lastMsgPreview).isEqualTo(Retractions.SELF_NOTICE)
+        // 已撤回的不能再撤回
+        assertThat(rig.retractions.retract(sent.rowId)).isEqualTo(RetractResult.NotAllowed)
+    }
+
+    /** 超过 2 分钟、收到的消息、发送失败的消息：不能撤回；发送失败时不改本地 */
+    @Test
+    fun retract_rules() = runTest {
+        val rig = rig()
+        val sent = rig.repository.sendText(BOB, ConversationEntity.TYPE_SINGLE, "x")
+        runCurrent()
+        client.receive(chat("in"))
+        runCurrent()
+        val failed = rig.db.messageDao().insert(outgoingAt("f", 1_000_000).copy(status = MessageEntity.STATUS_FAILED))
+
+        assertThat(rig.retractions.retract(rig.db.messageDao().get(BOB, "in")!!.rowId)).isEqualTo(RetractResult.NotAllowed)
+        assertThat(rig.retractions.retract(failed)).isEqualTo(RetractResult.NotAllowed)
+
+        client.messageAckHandler = { _, _ -> throw cn.android666.im.core.xmpp.XmppException.Timeout() }
+        assertThat(rig.retractions.retract(sent.rowId)).isEqualTo(RetractResult.Failed)
+        assertThat(rig.db.messageDao().getByRowId(sent.rowId)!!.retracted).isFalse()
+
+        testScheduler.advanceTimeBy(Retractions.TIME_LIMIT_MILLIS + 1)
+        assertThat(rig.retractions.retract(sent.rowId)).isEqualTo(RetractResult.TooLate)
+    }
+
+    /** 服务器拒绝撤回（biz 插件校验）：恢复原消息，通知界面 */
+    @Test
+    fun retract_rejectedByServer_reverted() = runTest {
+        val rig = rig()
+        val sent = rig.repository.sendText(BOB, ConversationEntity.TYPE_SINGLE, "原文")
+        runCurrent()
+        val rejections = async(start = CoroutineStart.UNDISPATCHED) { rig.retractions.rejections.first() }
+        rig.retractions.retract(sent.rowId)
+        val retractStanzaId = MessageCodec.parse(client.sentMessages.last()).message.id
+
+        client.receive(
+            "<message type='error' id='$retractStanzaId' from='$BOB'><error type='cancel'>" +
+                "<not-allowed xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/>" +
+                "<app-error xmlns='urn:android666:im:error:1' code='retract-timeout'/></error></message>",
+        )
+        runCurrent()
+
+        val message = rig.db.messageDao().getByRowId(sent.rowId)!!
+        assertThat(message.retracted).isFalse()
+        assertThat(message.body).isEqualTo("原文")
+        assertThat(rig.db.conversationDao().get(BOB)!!.lastMsgPreview).isEqualTo("原文")
+        assertThat(rejections.await()).isEqualTo("retract-timeout")
     }
 
     /** 发出的消息（指定时间） */

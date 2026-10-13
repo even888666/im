@@ -1,7 +1,10 @@
 package cn.android666.im.ui.chat
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -45,6 +48,7 @@ class ChatActivity : AppCompatActivity() {
                     messages = container.messageRepository,
                     conversations = container.conversationRepository,
                     readMarkers = container.readMarkers,
+                    retractions = container.retractions,
                     org = container.orgRepository,
                     history = container.historyLoader,
                 )
@@ -89,6 +93,9 @@ class ChatActivity : AppCompatActivity() {
                     cancelable = true,
                 )
             },
+            onLongClick = { message ->
+                MessageActionsDialogFragment.show(supportFragmentManager, message.rowId, message.body, viewModel.actionsFor(message))
+            },
         )
         val layoutManager = LinearLayoutManager(this).apply { reverseLayout = true }
         binding.list.layoutManager = layoutManager
@@ -118,6 +125,13 @@ class ChatActivity : AppCompatActivity() {
             if (rowId != null && result.getBoolean(MessageDialogFragment.RESULT_POSITIVE)) viewModel.resend(rowId)
         }
 
+        supportFragmentManager.setFragmentResultListener(MessageActionsDialogFragment.REQUEST_KEY, this) { _, result ->
+            when (result.getString(MessageActionsDialogFragment.RESULT_ACTION)) {
+                MessageActionsDialogFragment.ACTION_COPY -> copy(result.getString(MessageActionsDialogFragment.RESULT_TEXT).orEmpty())
+                MessageActionsDialogFragment.ACTION_RETRACT -> viewModel.retract(result.getLong(MessageActionsDialogFragment.RESULT_ROW_ID))
+            }
+        }
+
         binding.input.doAfterTextChanged { binding.send.isEnabled = !it.isNullOrBlank() }
         binding.send.setOnClickListener { viewModel.send(binding.input.text.toString()) }
         collectWhenStarted(viewModel.events) { event ->
@@ -129,6 +143,17 @@ class ChatActivity : AppCompatActivity() {
                 is ChatEvent.Toast -> Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /**
+     * 复制消息文字到剪贴板。
+     *
+     * @param text 文字
+     */
+    private fun copy(text: String) {
+        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(null, text))
+        // Android 13 起系统会自己提示"已复制"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) Toast.makeText(this, R.string.chat_copied, Toast.LENGTH_SHORT).show()
     }
 
     /**

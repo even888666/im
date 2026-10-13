@@ -94,3 +94,15 @@ internal fun MessageWithSender.toChatMessage(): ChatMessage {
         retractedBy = m.retractedBy,
     )
 }
+
+/**
+ * 是否可以撤回（菜单中显示"撤回"）：本人发出、已经发出（不是发送中 / 失败）、未撤回、在时限内。
+ * 服务器还会再校验一次（biz 插件，开发计划 4.20）。
+ *
+ * @param now 当前服务器时间（毫秒）
+ * @return 可以撤回时为 true
+ */
+fun ChatMessage.canRetract(now: Long): Boolean =
+    outgoing && !retracted && state != MessageState.SENDING && state != MessageState.FAILED &&
+        now - serverTime <= Retractions.TIME_LIMIT_MILLIS
+

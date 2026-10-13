@@ -24,11 +24,13 @@ import cn.android666.im.ui.conversation.TimeLabel
  * @property showReadState 是否显示"未读 / 已读"（单聊显示；文件传输助手不显示；群聊的已读人数见 M6）
  * @property now 当前时间（毫秒），计算时间分隔的文字
  * @property onResend 点击发送失败的图标（重发）
+ * @property onLongClick 长按消息气泡（操作菜单）
  */
 class ChatAdapter(
     private val showReadState: Boolean,
     private val now: () -> Long,
     private val onResend: (ChatMessage) -> Unit,
+    private val onLongClick: (ChatMessage) -> Unit = {},
 ) : PagingDataAdapter<ChatListItem, RecyclerView.ViewHolder>(DIFF) {
 
     /**
@@ -123,6 +125,10 @@ class ChatAdapter(
         val name = message.senderName ?: message.senderJid.substringBefore('@')
         b.avatar.bind(name, message.senderJid, message.senderAvatarHash)
         b.bubble.text = message.body
+        b.bubble.setOnLongClickListener {
+            onLongClick(message)
+            true
+        }
     }
 
     /**
@@ -135,6 +141,10 @@ class ChatAdapter(
         val name = message.senderName ?: message.senderJid.substringBefore('@')
         b.avatar.bind(name, message.senderJid, message.senderAvatarHash)
         b.bubble.text = message.body
+        b.bubble.setOnLongClickListener {
+            onLongClick(message)
+            true
+        }
         b.sending.isVisible = message.state == MessageState.SENDING
         b.failed.isVisible = message.state == MessageState.FAILED
         b.failed.setOnClickListener { onResend(message) }

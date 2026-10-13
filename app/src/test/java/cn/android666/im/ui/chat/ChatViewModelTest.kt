@@ -21,6 +21,7 @@ import cn.android666.im.data.sync.HistoryLoader
 import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MessageState
 import cn.android666.im.data.message.ReadMarkers
+import cn.android666.im.data.message.Retractions
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.testing.FakeArchive
@@ -70,7 +71,8 @@ class ChatViewModelTest {
         val messages = MessageRepository(holder, queue, ServerClock(clock), UuidIdGenerator()) { "10001@im.example.com" }
         val conversations = ConversationRepository(holder)
         val readMarkers = ReadMarkers(client, messages, conversations, UuidIdGenerator())
-        val vm = ChatViewModel(id, kind, messages, conversations, readMarkers, OrgRepository(client, holder, clock))
+        val retractions = Retractions(client, messages, ServerClock(clock), UuidIdGenerator(), { "10001@im.example.com" }, selfName = { null })
+        val vm = ChatViewModel(id, kind, messages, conversations, readMarkers, retractions, OrgRepository(client, holder, clock))
         return vm to messages
     }
 
@@ -198,6 +200,43 @@ class ChatViewModelTest {
         assertThat(db.messageDao().getByRowId(row)!!.status).isEqualTo(MessageEntity.STATUS_SENDING)
     }
 
+    /** 长按菜单：文字可复制；本人 2 分钟内已发出的可撤回 */
+    @Test
+    fun actionsFor_rules() = runTest(mainDispatcherRule.testDispatcher) {
+        val (vm, _) = newVm()
+        fun msg(outgoing: Boolean, state: MessageState, time: Long, retracted: Boolean = false) = cn.android666.im.data.message.ChatMessage(
+            rowId = 1, msgId = "m", conversationId = BOB, outgoing = outgoing, senderJid = "s", senderName = null, senderAvatarHash = "",
+            content = cn.android666.im.core.xmpp.extension.msg.MessageContent.Text, body = "x", state = state, errorCode = null,
+            serverTime = time, replyToMsgId = null, retracted = retracted, retractedBy = null,
+        )
+        val now = 1_000_000L
+        val copy = MessageActionsDialogFragment.ACTION_COPY
+        val retract = MessageActionsDialogFragment.ACTION_RETRACT
+        assertThat(vm.actionsFor(msg(true, MessageState.SENT, now - 60_000), now)).containsExactly(copy, retract).inOrder()
+        assertThat(vm.actionsFor(msg(true, MessageState.READ, now - 121_000), now)).containsExactly(copy)
+        assertThat(vm.actionsFor(msg(true, MessageState.FAILED, now), now)).containsExactly(copy)
+        assertThat(vm.actionsFor(msg(true, MessageState.SENDING, now), now)).containsExactly(copy)
+        assertThat(vm.actionsFor(msg(false, MessageState.RECEIVED, now), now)).containsExactly(copy)
+        assertThat(vm.actionsFor(msg(true, MessageState.SENT, now, retracted = true), now)).isEmpty()
+    }
+
+    /** 撤回未发出（未登录时一直是发送中）的消息：不允许，不提示 */
+    @Test
+    fun retract_notAllowed_silent() = runTest(mainDispatcherRule.testDispatcher) {
+        val (vm, _) = newVm()
+        vm.send("x")
+        runCurrent()
+        val rowId = db.messageDao().last(BOB)!!.rowId
+
+        vm.events.test {
+            // 前面发送产生的事件
+            assertThat(awaitItem()).isEqualTo(ChatEvent.Sent)
+            vm.retract(rowId)
+            runCurrent()
+            expectNoEvents()
+        }
+    }
+
     /** 4.11：本地没有消息时，向上滑动从服务器分页加载全部历史；时间分隔照常插入 */
     @Test
     fun items_loadHistoryFromServer() = runTest(mainDispatcherRule.testDispatcher) {
@@ -215,9 +254,10 @@ class ChatViewModelTest {
         val messages = MessageRepository(holder, queue, ServerClock(clock), UuidIdGenerator(), selfJid)
         val conversations = ConversationRepository(holder)
         val readMarkers = ReadMarkers(client, messages, conversations, UuidIdGenerator())
-        val handler = IncomingMessageHandler(client, messages, readMarkers, ServerClock(clock), UuidIdGenerator(), selfJid, backgroundScope)
+        val retractions = Retractions(client, messages, ServerClock(clock), UuidIdGenerator(), selfJid, selfName = { null })
+        val handler = IncomingMessageHandler(client, messages, readMarkers, retractions, ServerClock(clock), UuidIdGenerator(), selfJid, backgroundScope)
         val history = HistoryLoader(MamPager(client), handler, holder, UuidIdGenerator())
-        val vm = ChatViewModel(BOB, ConversationKind.SINGLE, messages, conversations, readMarkers, OrgRepository(client, holder, clock), history)
+        val vm = ChatViewModel(BOB, ConversationKind.SINGLE, messages, conversations, readMarkers, retractions, OrgRepository(client, holder, clock), history)
 
         val items = vm.items.asSnapshot { appendScrollWhile { true } }
 

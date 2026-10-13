@@ -17,6 +17,7 @@ import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.IncomingMessageHandler
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.ReadMarkers
+import cn.android666.im.data.message.Retractions
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.session.SessionContext
 import cn.android666.im.testing.FakeArchive
@@ -92,7 +93,8 @@ class MamSyncerTest {
         val queue = SendQueue(client, newHolder, backgroundScope, clock)
         val messages = MessageRepository(newHolder, queue, ServerClock(clock), ids, selfJid)
         val readMarkers = ReadMarkers(client, messages, ConversationRepository(newHolder), ids)
-        val handler = IncomingMessageHandler(client, messages, readMarkers, ServerClock(clock), ids, selfJid, backgroundScope)
+        val retractions = Retractions(client, messages, ServerClock(clock), ids, selfJid, selfName = { null })
+        val handler = IncomingMessageHandler(client, messages, readMarkers, retractions, ServerClock(clock), ids, selfJid, backgroundScope)
         runCurrent()
         return Rig(
             MamSyncer(MamPager(client), handler, newHolder, ServerClock(clock), ids, pageSize, maxPages),
@@ -257,6 +259,26 @@ class MamSyncerTest {
 
         assertThat(rig.syncer.syncSelf()).isEqualTo(4)
         assertThat(rig.db.messageDao().get(BOB, "m9")).isNotNull()
+    }
+
+    /** 补拉中原消息在前、撤回在后：按顺序应用，原消息显示为已撤回，不计未读 */
+    @Test
+    fun retractInArchive() = runTest {
+        val rig = rig()
+        rig.db.syncStateDao().put(SyncStateEntity(MamSyncer.KEY_SELF, "a0"))
+        archive.add(NOW, fromBob("m1"))
+        archive.add(
+            NOW + 1,
+            "<message xmlns='jabber:client' type='chat' id='x1' from='$BOB/pc' to='$SELF'><body>李四撤回了一条消息</body>" +
+                "<retract xmlns='urn:xmpp:message-retract:1' id='m1'/></message>",
+        )
+
+        rig.syncer.syncSelf()
+
+        assertThat(rig.db.messageDao().get(BOB, "m1")!!.retracted).isTrue()
+        val conversation = rig.db.conversationDao().get(BOB)!!
+        assertThat(conversation.unreadCount).isEqualTo(0)
+        assertThat(conversation.lastMsgPreview).isEqualTo("李四撤回了一条消息")
     }
 
     /** 服务器一直不返回 complete：拉到空页时停止 */

@@ -49,6 +49,13 @@ class MessageRepository(
     private val activeConversation = MutableStateFlow<String?>(null)
 
     /**
+     * 当前服务器时间（界面判断能否撤回等）。
+     *
+     * @return 毫秒
+     */
+    fun serverNowMillis(): Long = serverClock.nowMillis()
+
+    /**
      * 设置用户正在查看的会话。
      *
      * @param conversationId 会话 ID；离开聊天页时为 null
@@ -151,6 +158,106 @@ class MessageRepository(
             remaining
         }
     }
+
+    /**
+     * 应用撤回（开发计划 4.12，协议规范 §8.4）：原消息标为已撤回并清空内容；原消息还没收到时插入一条已撤回的占位记录，
+     * 防止之后补拉到原消息时又显示出来。被撤回的消息在未读范围内时未读数减 1；是会话最后一条时预览改为撤回提示。
+     *
+     * @param conversationId 会话 ID
+     * @param msgId 被撤回的消息 ID
+     * @param retractedBy 撤回者 bare JID
+     * @param direction 原消息的方向（插入占位记录时使用：撤回者是本人则为发出）
+     * @param time 撤回报文的服务器时间（占位记录的时间）
+     * @param notice 撤回提示文字（会话预览），如"张三撤回了一条消息"
+     * @param conversationType 会话不存在时使用的类型
+     * @return 被撤回的消息（含 rowId）；之前已经撤回过时为 null
+     */
+    suspend fun applyRetract(
+        conversationId: String,
+        msgId: String,
+        retractedBy: String,
+        direction: Int,
+        time: Long,
+        notice: String,
+        conversationType: Int,
+    ): MessageEntity? {
+        val db = databases.require()
+        return db.withTransaction {
+            val dao = db.messageDao()
+            val existing = dao.get(conversationId, msgId)
+            if (existing?.retracted == true) return@withTransaction null
+            val message = if (existing == null) {
+                // 先收到撤回：插入占位记录（不计未读）
+                val placeholder = MessageEntity(
+                    msgId = msgId,
+                    conversationId = conversationId,
+                    senderJid = if (direction == MessageEntity.DIRECTION_OUT) retractedBy else conversationId,
+                    direction = direction,
+                    type = MessageContent.Text.type,
+                    body = "",
+                    status = if (direction == MessageEntity.DIRECTION_OUT) MessageEntity.STATUS_SENT else MessageEntity.STATUS_RECEIVED,
+                    serverTime = time,
+                    retracted = true,
+                    retractedBy = retractedBy,
+                )
+                placeholder.copy(rowId = dao.insert(placeholder))
+            } else {
+                // 被撤回的是未读消息：未读减 1
+                val conversation = db.conversationDao().get(conversationId)
+                if (existing.direction == MessageEntity.DIRECTION_IN && conversation != null && conversation.unreadCount > 0 &&
+                    dao.countIncomingFrom(conversationId, existing.serverTime) <= conversation.unreadCount
+                ) {
+                    db.conversationDao().setUnread(conversationId, conversation.unreadCount - 1)
+                }
+                dao.markRetracted(existing.rowId, retractedBy)
+                existing.copy(retracted = true, retractedBy = retractedBy, body = "", contentJson = null)
+            }
+            // 预览：被撤回的是最后一条（或会话还没有消息）时显示撤回提示
+            val conversationDao = db.conversationDao()
+            val conversation = conversationDao.get(conversationId) ?: ConversationEntity(conversationId, conversationType)
+            val isLast = conversation.lastMsgRowId == null || conversation.lastMsgRowId == message.rowId ||
+                (existing == null && message.serverTime > conversation.lastMsgTime)
+            if (isLast) {
+                conversationDao.upsert(
+                    conversation.copy(lastMsgRowId = message.rowId, lastMsgPreview = notice, lastMsgTime = maxOf(message.serverTime, conversation.lastMsgTime)),
+                )
+            }
+            message
+        }
+    }
+
+    /**
+     * 撤回被服务器拒绝：恢复原消息。
+     *
+     * @param original 撤回前的消息
+     */
+    suspend fun revertRetract(original: MessageEntity) {
+        val db = databases.require()
+        db.withTransaction {
+            db.messageDao().unmarkRetracted(original.rowId, original.body, original.contentJson)
+            val conversation = db.conversationDao().get(original.conversationId)
+            if (conversation?.lastMsgRowId == original.rowId) {
+                db.conversationDao().upsert(conversation.copy(lastMsgPreview = original.body))
+            }
+        }
+    }
+
+    /**
+     * 按会话和消息 ID 查询消息。
+     *
+     * @param conversationId 会话 ID
+     * @param msgId 消息 ID
+     * @return 消息；不存在时为 null
+     */
+    suspend fun find(conversationId: String, msgId: String): MessageEntity? = databases.require().messageDao().get(conversationId, msgId)
+
+    /**
+     * 按 rowId 查询消息。
+     *
+     * @param rowId rowId
+     * @return 消息；不存在时为 null
+     */
+    suspend fun get(rowId: Long): MessageEntity? = databases.require().messageDao().getByRowId(rowId)
 
     /**
      * 会话中对方发来的最新一条消息（发送已读标记）。
