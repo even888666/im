@@ -12,6 +12,7 @@ import cn.android666.im.core.common.ServerClock
 import cn.android666.im.core.database.ImDatabase
 import cn.android666.im.core.database.UserDatabaseHolder
 import cn.android666.im.core.database.entity.ConversationEntity
+import cn.android666.im.core.database.entity.MediaFileEntity
 import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.database.entity.MessageWithSender
 import cn.android666.im.core.log.Logs
@@ -266,6 +267,7 @@ class MessageRepository(
             val dao = db.messageDao()
             val conversationIds = dao.getByRowIds(ids).map { it.conversationId }.toSet()
             val deleted = dao.deleteByRowIds(ids)
+            db.mediaFileDao().deleteForMessages(ids)
             for (id in conversationIds) {
                 val conversation = db.conversationDao().get(id) ?: continue
                 if (conversation.lastMsgRowId == null || conversation.lastMsgRowId !in ids) continue
@@ -374,7 +376,9 @@ class MessageRepository(
      * @return 发出的消息条数
      */
     suspend fun forward(targetId: String, targetType: Int, rowIds: Collection<Long>, mergedTitle: String?): Int {
-        val sources = databases.require().messageDao().getByRowIds(rowIds.take(MAX_SELECTION)).filter { !it.retracted }
+        // 已撤回的、附件还没上传完（没有下载地址）的跳过
+        val sources = databases.require().messageDao().getByRowIds(rowIds.take(MAX_SELECTION))
+            .filter { !it.retracted && !MessageJson.decodeContent(it.type, it.contentJson).hasPendingUpload() }
         if (sources.isEmpty()) return 0
         if (mergedTitle != null) {
             val content = MessageContent.Merged(
@@ -395,6 +399,40 @@ class MessageRepository(
     }
 
     /**
+     * 写入一条待上传附件的媒体消息（开发计划 5.4，由 MediaSender 调用）：消息为"发送中"，附件为"上传中"；
+     * 附件上传完成前发送队列不会发送它。
+     *
+     * @param conversationId 会话 ID
+     * @param conversationType 会话类型
+     * @param content 内容（下载地址暂时为空）
+     * @param attachments 附件（msgRowId 在写入时填入）
+     * @return 写入的消息（含 rowId）
+     */
+    internal suspend fun enqueueMedia(
+        conversationId: String,
+        conversationType: Int,
+        content: MessageContent,
+        attachments: List<MediaFileEntity>,
+    ): MessageEntity = enqueue(conversationId, conversationType, content, MessageCodec.fallbackBody(content), null, emptyList(), attachments)
+
+    /**
+     * 更新消息内容（附件上传完成后填入下载地址）。
+     *
+     * @param rowId 消息 rowId
+     * @param content 新内容
+     */
+    internal suspend fun updateContent(rowId: Long, content: MessageContent) {
+        databases.require().messageDao().updateContent(rowId, MessageJson.encodeContent(content).orEmpty())
+    }
+
+    /**
+     * 唤醒发送队列（附件上传完成后）。
+     */
+    internal fun wakeSendQueue() {
+        sendQueue.wake()
+    }
+
+    /**
      * 把一条发出的消息以"发送中"写库、更新会话，并唤醒发送队列。
      *
      * @param conversationId 会话 ID
@@ -403,6 +441,7 @@ class MessageRepository(
      * @param body 正文 / 降级文本
      * @param replyToMsgId 引用的原消息 ID
      * @param mentions @ 提醒
+     * @param attachments 附件（媒体消息）
      * @return 写入的消息（含 rowId）
      */
     private suspend fun enqueue(
@@ -412,6 +451,7 @@ class MessageRepository(
         body: String,
         replyToMsgId: String?,
         mentions: List<Mention>,
+        attachments: List<MediaFileEntity> = emptyList(),
     ): MessageEntity {
         val sender = selfJid() ?: throw IllegalStateException("未登录")
         val db = databases.require()
@@ -432,6 +472,7 @@ class MessageRepository(
             val rowId = db.messageDao().insert(draft)
             check(rowId > 0) { "消息 ID 重复：${draft.msgId}" }
             val message = draft.copy(rowId = rowId)
+            if (attachments.isNotEmpty()) db.mediaFileDao().insertAll(attachments.map { it.copy(msgRowId = rowId) })
             updateConversation(db, message, conversationType)
             message
         }

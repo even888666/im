@@ -144,6 +144,10 @@ data class ConversationEntity(
  * @property replySenderName 被引用消息的发送方姓名
  * @property replyBody 被引用消息的正文 / 降级文本
  * @property replyRetracted 被引用消息是否已撤回
+ * @property thumbnailPath 缩略图的本地文件（本人发出的图片、视频）
+ * @property mediaPath 原文件的本地文件
+ * @property mediaState 原文件的状态（MediaFileEntity.STATE_*）；没有附件记录时为 null
+ * @property mediaProgress 原文件的上传 / 下载进度 0 ~ 100
  */
 data class MessageWithSender(
     @Embedded val message: MessageEntity,
@@ -154,6 +158,10 @@ data class MessageWithSender(
     val replySenderName: String? = null,
     val replyBody: String? = null,
     val replyRetracted: Boolean? = null,
+    val thumbnailPath: String? = null,
+    val mediaPath: String? = null,
+    val mediaState: Int? = null,
+    val mediaProgress: Int? = null,
 )
 
 /**

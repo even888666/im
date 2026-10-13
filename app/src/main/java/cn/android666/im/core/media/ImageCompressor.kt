@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
+import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import androidx.exifinterface.media.ExifInterface
 import cn.android666.im.core.log.Logs
@@ -161,7 +162,7 @@ class ImageCompressor : ImageProcessor {
      */
     private fun encodeJpeg(bitmap: Bitmap, quality: Int): ByteArray {
         val opaque = if (bitmap.hasAlpha()) {
-            Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888).also {
+            createBitmap(bitmap.width, bitmap.height).also {
                 val canvas = Canvas(it)
                 canvas.drawColor(Color.WHITE)
                 canvas.drawBitmap(bitmap, 0f, 0f, null)

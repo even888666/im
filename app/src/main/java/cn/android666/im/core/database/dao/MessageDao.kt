@@ -62,6 +62,16 @@ interface MessageDao {
     suspend fun getByRowId(rowId: Long): MessageEntity?
 
     /**
+     * 更新消息内容（媒体消息上传完成后填入下载地址，开发计划 5.4）。
+     *
+     * @param rowId rowId
+     * @param contentJson 新的内容 JSON
+     * @return 更新的行数
+     */
+    @Query("UPDATE message SET contentJson = :contentJson WHERE rowId = :rowId")
+    suspend fun updateContent(rowId: Long, contentJson: String): Int
+
+    /**
      * 按消息 ID 查询（送达回执、发送失败等只带消息 ID 的报文，会话由调用方确定不了时使用）。
      *
      * @param msgId 消息 ID
@@ -151,11 +161,18 @@ interface MessageDao {
     suspend fun markReadUpTo(conversationId: String, serverTime: Long): Int
 
     /**
-     * 还没发出去的消息（发送队列在启动或重连后恢复），按写入顺序。
+     * 还没发出去的消息（发送队列在启动或重连后恢复），按写入顺序。附件还没上传完的消息除外（开发计划 5.4，
+     * 由 MediaSender 上传完成后再唤醒队列）。
      *
      * @return 发送中的消息
      */
-    @Query("SELECT * FROM message WHERE direction = 1 AND status = 0 ORDER BY rowId")
+    @Query(
+        """
+        SELECT * FROM message WHERE direction = 1 AND status = 0
+        AND NOT EXISTS (SELECT 1 FROM media_file AS f WHERE f.msgRowId = message.rowId AND f.state != 2)
+        ORDER BY rowId
+        """,
+    )
     suspend fun pending(): List<MessageEntity>
 
     /**
@@ -170,7 +187,7 @@ interface MessageDao {
 
     /**
      * 聊天页分页（开发计划 4.8）：会话中的消息，新的在前（列表倒序显示，最新的在底部），附带发送方姓名与头像、
-     * 被引用的原消息（4.15）。
+     * 被引用的原消息（4.15）、附件的本地文件与上传进度（5.4）。
      *
      * @param conversationId 会话 ID
      * @return 分页数据源（数据变化时自动失效重新加载）
@@ -179,11 +196,14 @@ interface MessageDao {
         """
         SELECT m.*, e.name AS senderName, e.avatarHash AS senderAvatarHash,
                r.rowId AS replyRowId, r.senderJid AS replySenderJid, re.name AS replySenderName,
-               r.body AS replyBody, r.retracted AS replyRetracted
+               r.body AS replyBody, r.retracted AS replyRetracted,
+               mt.localPath AS thumbnailPath, mo.localPath AS mediaPath, mo.state AS mediaState, mo.progress AS mediaProgress
         FROM message AS m
         LEFT JOIN employee AS e ON e.jid = m.senderJid
         LEFT JOIN message AS r ON r.conversationId = m.conversationId AND r.msgId = m.replyToMsgId
         LEFT JOIN employee AS re ON re.jid = r.senderJid
+        LEFT JOIN media_file AS mt ON mt.msgRowId = m.rowId AND mt.role = 1
+        LEFT JOIN media_file AS mo ON mo.msgRowId = m.rowId AND mo.role = 0
         WHERE m.conversationId = :conversationId
         ORDER BY m.serverTime DESC, m.rowId DESC
         """,

@@ -22,6 +22,7 @@ import cn.android666.im.data.file.MediaCache
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.ChatStates
 import cn.android666.im.data.message.IncomingMessageHandler
+import cn.android666.im.data.message.MediaSender
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.Retractions
@@ -59,6 +60,7 @@ import cn.android666.im.core.common.IdGenerator
 import cn.android666.im.core.common.ServerClock
 import cn.android666.im.core.common.SystemTimeClock
 import cn.android666.im.core.common.UuidIdGenerator
+import cn.android666.im.core.media.ImageCompressor
 import cn.android666.im.core.log.LogFilePrefixManager
 import cn.android666.im.core.log.LogFilePrefixStore
 import kotlinx.coroutines.CoroutineScope
@@ -263,6 +265,21 @@ class AppContainer(context: Context) {
      * @return 缓存；未登录时为 null
      */
     fun mediaCache(): MediaCache? = userDatabaseHolder.username?.let { MediaCache(File(appContext.cacheDir, "media/$it")) }
+
+    /** 媒体消息发送（开发计划 5.4）：待上传文件放在 `{cacheDir}/media/{工号}/out`，上传完成后移入媒体缓存 */
+    val mediaSender: MediaSender by lazy {
+        MediaSender(
+            client = xmppClient,
+            databases = userDatabaseHolder,
+            repository = messageRepository,
+            uploader = fileUploader,
+            images = ImageCompressor(),
+            workDir = { userDatabaseHolder.username?.let { File(appContext.cacheDir, "media/$it/out") } },
+            cache = ::mediaCache,
+            scope = applicationScope,
+            io = dispatchers.io,
+        )
+    }
 
     /** 撤回 */
     val retractions: Retractions by lazy {

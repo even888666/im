@@ -1,5 +1,6 @@
 package cn.android666.im.data.message
 
+import cn.android666.im.core.database.entity.MediaFileEntity
 import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.database.entity.MessageWithSender
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
@@ -45,6 +46,23 @@ sealed interface ReplyPreview {
 }
 
 /**
+ * 附件的本地状态（开发计划 5.4，界面模型）。
+ *
+ * @property thumbnailPath 缩略图的本地文件（本人发出的图片）；没有时界面按下载地址加载
+ * @property filePath 原文件的本地文件
+ * @property uploading 是否正在上传
+ * @property failed 上传失败
+ * @property progress 上传进度 0 ~ 100
+ */
+data class LocalMedia(
+    val thumbnailPath: String?,
+    val filePath: String?,
+    val uploading: Boolean,
+    val failed: Boolean,
+    val progress: Int,
+)
+
+/**
  * 聊天页中的一条消息（界面模型，与 Room 实体解耦）。
  *
  * @property rowId 本地 rowId（重发等操作使用）
@@ -63,6 +81,7 @@ sealed interface ReplyPreview {
  * @property retracted 是否已撤回
  * @property retractedBy 撤回者 bare JID
  * @property reply 引用的原消息预览；不是引用回复时为 null
+ * @property media 附件的本地状态；没有附件记录（文本、收到的图片）时为 null
  */
 data class ChatMessage(
     val rowId: Long,
@@ -81,6 +100,7 @@ data class ChatMessage(
     val retracted: Boolean,
     val retractedBy: String?,
     val reply: ReplyPreview? = null,
+    val media: LocalMedia? = null,
 )
 
 /**
@@ -118,6 +138,17 @@ internal fun MessageWithSender.toChatMessage(): ChatMessage {
             replyRowId == null -> ReplyPreview.Missing
             replyRetracted == true -> ReplyPreview.Retracted
             else -> ReplyPreview.Found(replySenderJid.orEmpty(), replySenderName, replyBody.orEmpty())
+        },
+        media = if (mediaState == null && thumbnailPath == null) {
+            null
+        } else {
+            LocalMedia(
+                thumbnailPath = thumbnailPath,
+                filePath = mediaPath,
+                uploading = mediaState == MediaFileEntity.STATE_UPLOADING,
+                failed = mediaState == MediaFileEntity.STATE_FAILED,
+                progress = mediaProgress ?: 0,
+            )
         },
     )
 }

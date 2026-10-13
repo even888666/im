@@ -21,6 +21,32 @@ class FileTooLargeException(val size: Long, val maxSize: Long) : Exception("文�
 class UploadFailedException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /**
+ * 文件上传的抽象（媒体消息发送使用，测试中替换为假实现）。
+ */
+interface Uploader {
+
+    /**
+     * 服务器的上传上限。
+     *
+     * @return 字节数；没有上传服务时为 null
+     */
+    fun uploadLimit(): Long?
+
+    /**
+     * 上传。
+     *
+     * @param file 本地文件
+     * @param originalName 原始文件名（取扩展名）
+     * @param mime MIME 类型
+     * @param onProgress 进度回调（已上传字节数、总字节数）
+     * @return 下载地址
+     * @throws FileTooLargeException 超过上限
+     * @throws UploadFailedException 没有上传服务、或重试后仍失败
+     */
+    suspend fun upload(file: File, originalName: String, mime: String, onProgress: (Long, Long) -> Unit = { _, _ -> }): String
+}
+
+/**
  * 文件上传（开发计划 5.2，协议规范 §9，XEP-0363）：申请槽位 → HTTP PUT 上传（带进度）→ 返回下载地址。
  *
  * - 上传用的文件名改为 `{UUID}.{扩展名}`，原始文件名放在消息的 file@name 中；
@@ -37,9 +63,16 @@ class FileUploader(
     private val http: OkHttpClient,
     private val maxFileSize: () -> Long?,
     private val uuid: () -> String = { UUID.randomUUID().toString() },
-) {
+) : Uploader {
 
     private val log = Logs.file(TAG)
+
+    /**
+     * 服务器的上传上限。
+     *
+     * @return 字节数；没有上传服务时为 null
+     */
+    override fun uploadLimit(): Long? = maxFileSize()
 
     /**
      * 上传。
@@ -52,7 +85,7 @@ class FileUploader(
      * @throws FileTooLargeException 超过上限
      * @throws UploadFailedException 没有上传服务、或重试后仍失败
      */
-    suspend fun upload(file: File, originalName: String, mime: String, onProgress: (Long, Long) -> Unit = { _, _ -> }): String {
+    override suspend fun upload(file: File, originalName: String, mime: String, onProgress: (Long, Long) -> Unit): String {
         val size = file.length()
         val max = maxFileSize() ?: throw UploadFailedException("服务器没有文件上传服务")
         if (size > max) throw FileTooLargeException(size, max)

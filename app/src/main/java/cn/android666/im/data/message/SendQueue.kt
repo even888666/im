@@ -220,4 +220,13 @@ object SendError {
 
     /** 其他发送错误 */
     const val FAILED = "failed"
+
+    /** 附件上传失败（开发计划 5.4） */
+    const val UPLOAD_FAILED = "upload-failed"
+
+    /** 附件超过服务器的上传上限 */
+    const val FILE_TOO_LARGE = "file-too-large"
+
+    /** 附件的本地文件已不存在（被清理），只能重新选择 */
+    const val FILE_MISSING = "file-missing"
 }
