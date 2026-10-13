@@ -10,6 +10,7 @@ import cn.android666.im.data.session.SessionState
 import cn.android666.im.ui.common.ErrorMessages
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -42,12 +43,14 @@ sealed interface MainEvent {
  * @param connectionState 连接状态
  * @param networkStatus 网络状态
  * @param totalUnread 总未读数（"消息" Tab 角标）
+ * @param syncing 是否正在补拉消息（状态条显示"收取中…"）
  */
 class MainViewModel(
     private val sessionManager: SessionManager,
     connectionState: StateFlow<ConnectionState>,
     networkStatus: StateFlow<NetworkStatus>,
     totalUnread: Flow<Int> = flowOf(0),
+    syncing: StateFlow<Boolean> = MutableStateFlow(false),
 ) : ViewModel() {
 
     /** 总未读数（"消息" Tab 角标），0 时不显示 */
@@ -55,8 +58,12 @@ class MainViewModel(
 
     /** 顶部连接状态条的文字；null 表示已连接、不显示 */
     @get:StringRes
-    val banner: StateFlow<Int?> = combine(connectionState, networkStatus, ConnectionBanner::textFor)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, ConnectionBanner.textFor(connectionState.value, networkStatus.value))
+    val banner: StateFlow<Int?> = combine(connectionState, networkStatus, syncing, ConnectionBanner::textFor)
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            ConnectionBanner.textFor(connectionState.value, networkStatus.value, syncing.value),
+        )
 
     /** 当前登录的工号（"我"页面显示） */
     val username: StateFlow<String?> = sessionManager.state.map { it.username() }

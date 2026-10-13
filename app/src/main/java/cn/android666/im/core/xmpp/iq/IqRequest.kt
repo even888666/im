@@ -28,6 +28,12 @@ abstract class IqRequest<T>(
     val to: String? = null,
 ) {
 
+    /**
+     * 是否发给本人账号（不带 to 属性，由服务器代表本人的账号处理，如查询本人的 MAM 归档）。
+     * 为 true 时忽略 [to]。
+     */
+    open val toOwnAccount: Boolean get() = false
+
     /** 子元素的属性（值会自动转义） */
     open val attributes: Map<String, String> = emptyMap()
 

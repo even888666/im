@@ -199,6 +199,15 @@ class FakeXmppClient : XmppClient {
         incomingFlow.emit(xml)
     }
 
+    /**
+     * 立即推送一条 message 报文（不挂起，可在 [iqResponder] 中调用，模拟 MAM 结果先于 IQ 结果推送）。
+     *
+     * @param xml message 报文
+     */
+    fun receiveNow(xml: String) {
+        check(incomingFlow.tryEmit(xml)) { "收到的消息缓冲区已满" }
+    }
+
     /** 已发送（已交给 [messageAckHandler] 处理）的 message 报文 */
     val sentMessages = mutableListOf<String>()
 

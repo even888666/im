@@ -316,7 +316,8 @@ class SmackXmppClient(
     }
 
     override suspend fun <T> sendIq(request: IqRequest<T>): T = request("IQ ${request.namespace}#${request.elementName}") { current ->
-        val iq = RawIq(request).apply { to = JidCreate.from(request.to ?: serverConfig.domain) }
+        // 发给本人账号的请求不带 to（例如 MAM 本人归档，带服务器域名会被当作查询服务器的归档而拒绝）
+        val iq = RawIq(request).apply { to = if (request.toOwnAccount) null else JidCreate.from(request.to ?: serverConfig.domain) }
         // 先注册结果解析器，保证结果中嵌套元素的命名空间不丢失
         RawResultIqProvider.registerFor(request)
         val response: IQ = current.sendIqRequestAndWaitForResponse(iq)

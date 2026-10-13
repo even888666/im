@@ -32,6 +32,17 @@ interface MessageDao {
     suspend fun update(message: MessageEntity)
 
     /**
+     * 补上存档 ID：实时收到时没有 stanza-id 的消息，补拉时拿到存档 ID 后写入（向前翻历史时作为游标）。
+     *
+     * @param conversationId 会话 ID
+     * @param msgId 消息 ID
+     * @param stanzaId 存档 ID
+     * @return 更新的条数
+     */
+    @Query("UPDATE message SET stanzaId = :stanzaId WHERE conversationId = :conversationId AND msgId = :msgId AND stanzaId IS NULL")
+    suspend fun fillStanzaId(conversationId: String, msgId: String, stanzaId: String): Int
+
+    /**
      * 按会话和消息 ID 查询。
      *
      * @param conversationId 会话 ID

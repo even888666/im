@@ -169,6 +169,7 @@ class MainActivity : AppCompatActivity() {
             connectionState = container.xmppClient.connectionState,
             networkStatus = container.networkMonitor.status,
             totalUnread = container.conversationRepository.observeTotalUnread(),
+            syncing = container.mamSyncer.syncing,
         )
     }
 }

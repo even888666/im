@@ -12,12 +12,18 @@ object Rsm {
      * 生成分页请求 `<set xmlns='http://jabber.org/protocol/rsm'><max>…</max><after>…</after></set>`。
      *
      * @param max 每页条数
-     * @param after 上一页最后一项的游标，第一页为 null
+     * @param after 上一页最后一项的游标（向后翻页），第一页为 null
+     * @param before 向前翻页：当前最早一项的游标；空字符串表示从最后一页开始（`<before/>`）；null 表示不向前翻页
      * @return XML
      */
-    fun requestXml(max: Int, after: String? = null): String = buildString {
+    fun requestXml(max: Int, after: String? = null, before: String? = null): String = buildString {
         append("<set xmlns='").append(NAMESPACE).append("'><max>").append(max).append("</max>")
         if (after != null) append("<after>").append(Xml.escape(after)).append("</after>")
+        when {
+            before == null -> Unit
+            before.isEmpty() -> append("<before/>")
+            else -> append("<before>").append(Xml.escape(before)).append("</before>")
+        }
         append("</set>")
     }
 

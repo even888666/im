@@ -84,16 +84,21 @@ class MessageRepository(
      *
      * @param message 消息（rowId 为 0）
      * @param conversationType 会话不存在时使用的类型
+     * @param countUnread 是否计入未读（首次登录导入的历史消息不计）
      * @return 保存后的消息（含 rowId）；"会话 + 消息 ID"已存在（重复）时为 null
      * @throws IllegalStateException 未登录
      */
-    suspend fun saveIncoming(message: MessageEntity, conversationType: Int): MessageEntity? {
+    suspend fun saveIncoming(message: MessageEntity, conversationType: Int, countUnread: Boolean = true): MessageEntity? {
         val db = databases.require()
         return db.withTransaction {
             val rowId = db.messageDao().insert(message)
-            if (rowId <= 0) return@withTransaction null
+            if (rowId <= 0) {
+                // 重复的消息：补拉时带来了存档 ID，补上（向前翻历史时作为游标）
+                message.stanzaId?.let { db.messageDao().fillStanzaId(message.conversationId, message.msgId, it) }
+                return@withTransaction null
+            }
             val saved = message.copy(rowId = rowId)
-            updateConversation(db, saved, conversationType)
+            updateConversation(db, saved, conversationType, countUnread)
             saved
         }
     }
@@ -248,12 +253,13 @@ class MessageRepository(
      * @param db 数据库（在事务中调用）
      * @param message 新消息（含 rowId）
      * @param conversationType 会话不存在时使用的类型
+     * @param allowUnread 是否允许计入未读（首次登录导入的历史消息为 false）
      */
-    private suspend fun updateConversation(db: ImDatabase, message: MessageEntity, conversationType: Int) {
+    private suspend fun updateConversation(db: ImDatabase, message: MessageEntity, conversationType: Int, allowUnread: Boolean = true) {
         val dao = db.conversationDao()
         val stored = dao.get(message.conversationId)
         val existing = stored ?: ConversationEntity(message.conversationId, conversationType)
-        val countUnread = message.direction == MessageEntity.DIRECTION_IN && !message.retracted &&
+        val countUnread = allowUnread && message.direction == MessageEntity.DIRECTION_IN && !message.retracted &&
             activeConversation.value != message.conversationId
         val isLatest = existing.lastMsgRowId == null || message.serverTime >= existing.lastMsgTime
         var updated = existing

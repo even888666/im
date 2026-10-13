@@ -52,6 +52,7 @@
     <!-- 主界面顶部连接状态条 -->
     <string name="banner_no_network">网络不可用，请检查网络设置</string>
     <string name="banner_connecting">正在连接服务器…</string>
+    <string name="banner_syncing">收取中…</string>
     <string name="banner_disconnected">连接已断开，正在重新连接…</string>
 
     <!-- 隐私政策（功能清单 §14）；正式文本由公司法务提供后替换，见 决策记录.md -->

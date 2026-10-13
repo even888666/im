@@ -69,5 +69,8 @@ class UiLogicTest {
         assertThat(ConnectionBanner.textFor(ConnectionState.Disconnected(DisconnectReason.Network(null)), NetworkStatus.NONE))
             .isEqualTo(R.string.banner_no_network)
         assertThat(ConnectionBanner.textFor(ConnectionState.Connecting, NetworkStatus.NONE)).isEqualTo(R.string.banner_no_network)
+        // 已连接、正在补拉消息：显示"收取中…"；未连接时补拉标志不影响
+        assertThat(ConnectionBanner.textFor(ConnectionState.Authenticated(false), online, syncing = true)).isEqualTo(R.string.banner_syncing)
+        assertThat(ConnectionBanner.textFor(ConnectionState.Connecting, online, syncing = true)).isEqualTo(R.string.banner_connecting)
     }
 }

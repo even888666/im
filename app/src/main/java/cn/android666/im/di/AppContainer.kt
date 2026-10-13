@@ -19,6 +19,9 @@ import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.message.ReadMarkers
 import cn.android666.im.data.message.SendQueue
 import cn.android666.im.data.org.OrgRepository
+import cn.android666.im.data.sync.MamPager
+import cn.android666.im.data.sync.MamSyncStep
+import cn.android666.im.data.sync.MamSyncer
 import cn.android666.im.data.presence.PresenceRepository
 import cn.android666.im.data.org.OrgSyncStep
 import cn.android666.im.data.settings.AppSettingsStore
@@ -147,6 +150,7 @@ class AppContainer(context: Context) {
                 RosterStep(contactRepository),
                 InitialPresenceStep(xmppClient) { presenceRepository.loadMyPresence() },
                 OrgSyncStep(orgRepository),
+                MamSyncStep(mamSyncer),
             ),
             scope = applicationScope,
             onUserLoggedOut = {
@@ -186,6 +190,11 @@ class AppContainer(context: Context) {
 
     /** 会话列表：查询、删除、未读数 */
     val conversationRepository: ConversationRepository by lazy { ConversationRepository(userDatabaseHolder) }
+
+    /** 消息补拉（MAM） */
+    val mamSyncer: MamSyncer by lazy {
+        MamSyncer(MamPager(xmppClient), incomingMessageHandler, userDatabaseHolder, serverClock, idGenerator)
+    }
 
     /** 单聊已读标记 */
     val readMarkers: ReadMarkers by lazy { ReadMarkers(xmppClient, messageRepository, conversationRepository, idGenerator) }

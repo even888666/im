@@ -15,11 +15,12 @@ object ConnectionBanner {
      *
      * @param connection 连接状态
      * @param network 网络状态
-     * @return 字符串资源 ID；已连接时返回 null（不显示状态条）
+     * @param syncing 是否正在补拉消息（已连接时显示"收取中…"）
+     * @return 字符串资源 ID；已连接且没有在补拉时返回 null（不显示状态条）
      */
     @StringRes
-    fun textFor(connection: ConnectionState, network: NetworkStatus): Int? = when {
-        connection is ConnectionState.Authenticated -> null
+    fun textFor(connection: ConnectionState, network: NetworkStatus, syncing: Boolean = false): Int? = when {
+        connection is ConnectionState.Authenticated -> if (syncing) R.string.banner_syncing else null
         !network.available -> R.string.banner_no_network
         connection is ConnectionState.Connecting -> R.string.banner_connecting
         connection is ConnectionState.Idle -> R.string.banner_connecting

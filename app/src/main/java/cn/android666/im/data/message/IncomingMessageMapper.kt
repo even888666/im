@@ -31,6 +31,7 @@ object IncomingMessageMapper {
      * @param serverTime 服务器时间（离线 / 补拉消息为 delay 时间，实时消息为本地接收时间换算的服务器时间）
      * @param selfJid 本人 bare JID（判断 stanza-id 的归属、是否 @ 了我）
      * @param fallbackId 报文没有消息 ID 时生成一个（无法去重，只为能保存）
+     * @param archiveId MAM 结果中的存档 ID（stanza-id），优先于报文中的 stanza-id 元素
      * @return 消息表记录（rowId 为 0）
      */
     fun toEntity(
@@ -42,11 +43,12 @@ object IncomingMessageMapper {
         serverTime: Long,
         selfJid: String,
         fallbackId: () -> String,
+        archiveId: String? = null,
     ): MessageEntity {
         val content = stanza.content ?: MessageContent.Text
         val body = stanza.body.orEmpty().ifEmpty { if (content is MessageContent.Unknown) UNSUPPORTED_TEXT else "" }
         // 单聊的 stanza-id 由本人归档分配（by = 本人 bare JID），群聊由群分配（by = 群 JID）
-        val stanzaId = stanza.stanzaIds.firstOrNull { it.by == selfJid || it.by == conversationId }?.id
+        val stanzaId = archiveId ?: stanza.stanzaIds.firstOrNull { it.by == selfJid || it.by == conversationId }?.id
         return MessageEntity(
             msgId = stanza.msgId ?: stanzaId ?: fallbackId(),
             conversationId = conversationId,

@@ -25,7 +25,8 @@ import kotlinx.coroutines.launch
  *
  * 当前处理：单聊的用户可见消息（去重 → 写库 → 更新会话 / 未读 → 回送达回执）、送达回执与服务器退回（4.5）、
  * Carbons 多端同步与文件传输助手（4.6）、已读标记（4.9）。
- * 其余类型在对应的小功能中接入：MAM（4.10，由补拉器自己收集）、
+ * MAM 补拉的消息由 MamSyncer 收集后调用 [applyArchived]（4.10）。
+ * 其余类型在对应的小功能中接入：
  * 撤回（4.12）、正在输入（4.14）、群聊（M6）。
  *
  * @property client XMPP 客户端
@@ -57,6 +58,47 @@ class IncomingMessageHandler(
         // 立即订阅：登录后服务器马上会投递离线消息
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             client.incomingMessages.collect { handle(it) }
+        }
+    }
+
+    /**
+     * 不同来源的消息的处理方式。
+     *
+     * @property reply 是否由本端回送达回执
+     * @property notify 是否发出新消息通知
+     * @property countUnread 是否计入未读
+     * @property archiveId MAM 存档 ID（补拉的消息）
+     */
+    private data class Handling(val reply: Boolean, val notify: Boolean, val countUnread: Boolean, val archiveId: String? = null)
+
+    /**
+     * 处理一条 MAM 补拉到的消息（开发计划 4.10，由 MamSyncer 按时间顺序调用）：保存消息、应用已读，
+     * 不回送达回执（协议规范 §8.1），不发通知；首次登录导入的历史消息不计未读。
+     *
+     * @param incoming 带 MAM 包装的报文
+     * @param initial 是否首次登录导入历史
+     */
+    suspend fun applyArchived(incoming: IncomingMessage, initial: Boolean) {
+        val envelope = incoming.envelope as? MessageEnvelope.Mam ?: return
+        val self = selfJid() ?: return
+        val msg = incoming.message
+        val from = msg.from ?: return
+        val sender = IncomingMessageMapper.bareJid(from)
+        val handling = Handling(reply = false, notify = false, countUnread = !initial, archiveId = envelope.stanzaId)
+        when {
+            msg.type == "groupchat" -> log.debug("群消息暂未处理（M6）：id={}", msg.msgId)
+            msg.displayedId != null && sender == self -> {
+                val peer = msg.to?.let(IncomingMessageMapper::bareJid) ?: return
+                repository.applyReadElsewhere(peer, msg.displayedId)
+                readMarkers.onMarkedElsewhere(peer, msg.displayedId)
+            }
+            msg.displayedId != null -> onDisplayed(msg, msg.displayedId)
+            msg.content != null && isChatType(msg) && sender == self -> {
+                val peer = msg.to?.let(IncomingMessageMapper::bareJid) ?: return
+                saveOwn(msg, peer, self, "补拉", envelope.stanzaId)
+            }
+            msg.content != null && isChatType(msg) -> onChatMessage(msg, self, handling)
+            else -> log.debug("补拉到暂未处理的消息：type={}，id={}", msg.type, msg.msgId)
         }
     }
 
@@ -185,7 +227,7 @@ class IncomingMessageHandler(
         when {
             msg.receivedId != null -> onReceipt(msg, msg.receivedId)
             msg.displayedId != null -> onDisplayed(msg, msg.displayedId)
-            msg.content != null && isChatType(msg) -> onChatMessage(msg, self, reply = false)
+            msg.content != null && isChatType(msg) -> onChatMessage(msg, self, CARBON_RECEIVED)
             else -> log.debug("其他端收到的非消息报文：id={}", msg.msgId)
         }
     }
@@ -198,8 +240,9 @@ class IncomingMessageHandler(
      * @param peer 对方 bare JID（文件传输助手为本人）
      * @param self 本人 bare JID
      * @param source 来源，写日志用
+     * @param archiveId MAM 存档 ID（补拉的消息）
      */
-    private suspend fun saveOwn(msg: MessageStanza, peer: String, self: String, source: String) {
+    private suspend fun saveOwn(msg: MessageStanza, peer: String, self: String, source: String, archiveId: String? = null) {
         val entity = IncomingMessageMapper.toEntity(
             stanza = msg,
             conversationId = peer,
@@ -209,6 +252,7 @@ class IncomingMessageHandler(
             serverTime = msg.delayStamp ?: serverClock.nowMillis(),
             selfJid = self,
             fallbackId = ids::messageId,
+            archiveId = archiveId,
         )
         val type = if (peer == self) ConversationEntity.TYPE_SELF else ConversationEntity.TYPE_SINGLE
         val saved = repository.saveIncoming(entity, type)
@@ -228,9 +272,9 @@ class IncomingMessageHandler(
      *
      * @param msg 消息
      * @param self 本人 bare JID
-     * @param reply 是否由本端回送达回执（Carbons 抄送过来的由收到的那一端回执）
+     * @param handling 处理方式（Carbons 抄送过来的由收到的那一端回执；补拉的不回执、不通知）
      */
-    private suspend fun onChatMessage(msg: MessageStanza, self: String, reply: Boolean = true) {
+    private suspend fun onChatMessage(msg: MessageStanza, self: String, handling: Handling = REALTIME) {
         val from = msg.from ?: run {
             log.warn("消息没有发送方，忽略：id={}", msg.msgId)
             return
@@ -238,7 +282,7 @@ class IncomingMessageHandler(
         val sender = IncomingMessageMapper.bareJid(from)
         if (sender == self) {
             // 文件传输助手：本人其他端发给本人 bare JID 的消息（协议规范 §11.1）
-            saveOwn(msg, self, self, "文件传输助手")
+            saveOwn(msg, self, self, "文件传输助手", handling.archiveId)
             return
         }
         val entity = IncomingMessageMapper.toEntity(
@@ -250,18 +294,19 @@ class IncomingMessageHandler(
             serverTime = msg.delayStamp ?: serverClock.nowMillis(),
             selfJid = self,
             fallbackId = ids::messageId,
+            archiveId = handling.archiveId,
         )
-        val saved = repository.saveIncoming(entity, ConversationEntity.TYPE_SINGLE)
+        val saved = repository.saveIncoming(entity, ConversationEntity.TYPE_SINGLE, handling.countUnread)
         if (saved != null) {
-            log.info("收到消息：msgId={}，来自={}，类型={}，离线={}", saved.msgId, sender, saved.type, msg.delayStamp != null)
-            newMessageFlow.tryEmit(saved)
+            log.info("收到消息：msgId={}，来自={}，类型={}，离线={}，补拉={}", saved.msgId, sender, saved.type, msg.delayStamp != null, handling.archiveId != null)
+            if (handling.notify) newMessageFlow.tryEmit(saved)
             // 用户正在看这个会话：立即标记已读（协议规范 §8.2）
             if (repository.activeConversationId() == sender) scope.launch { readMarkers.markConversationRead(sender) }
         } else {
             log.info("重复的消息，丢弃：msgId={}，来自={}", entity.msgId, sender)
         }
         // 重复的消息也回执：对方可能没收到上一次的回执（例如离线消息与重发同时到达）
-        if (reply && msg.requestReceipt && msg.msgId != null) sendReceipt(from, msg.msgId!!)
+        if (handling.reply && msg.requestReceipt && msg.msgId != null) sendReceipt(from, msg.msgId!!)
     }
 
     /**
@@ -288,5 +333,11 @@ class IncomingMessageHandler(
 
         /** 回执等待服务器确认的超时 */
         const val RECEIPT_ACK_TIMEOUT_MILLIS = 30_000L
+
+        /** 实时收到的消息：回执、通知、计未读 */
+        val REALTIME = Handling(reply = true, notify = true, countUnread = true)
+
+        /** 本人其他端收到的消息（抄送）：不回执（由收到的那一端回执），通知、计未读 */
+        val CARBON_RECEIVED = Handling(reply = false, notify = true, countUnread = true)
     }
 }
