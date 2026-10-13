@@ -11,7 +11,9 @@ import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.extension.msg.FileInfo
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.core.xmpp.extension.msg.ThumbnailInfo
+import cn.android666.im.data.file.FileDownloader
 import cn.android666.im.data.file.FileTooLargeException
+import cn.android666.im.data.file.FileTypes
 import cn.android666.im.data.file.MediaCache
 import cn.android666.im.data.file.UploadFailedException
 import cn.android666.im.data.file.Uploader
@@ -164,6 +166,51 @@ class MediaSender(
         )
         val saved = repository.enqueueMedia(conversationId, conversationType, content, attachments)
         log.info("语音消息已写入，开始上传：msgId={}，会话={}，{} 毫秒，{} 字节", saved.msgId, conversationId, duration, file.length())
+        start(db, saved.rowId)
+        return saved
+    }
+
+    /**
+     * 发送文件（协议规范 §7.5）：导入的副本移入待上传目录，计算 SHA-256（接收方下载后校验），上传后发送。
+     *
+     * @param conversationId 会话 ID
+     * @param conversationType 会话类型
+     * @param source 文件（已复制到本地，会被移走）
+     * @param displayName 原始文件名；不知道时为 null（用"未命名"）
+     * @param mime MIME 类型；不知道时为 null（按 application/octet-stream）
+     * @return 写入的消息
+     * @throws FileTooLargeException 超过服务器的上传上限（此时不写入消息，源文件保留由调用方删除）
+     * @throws IOException 文件无法读取或移动
+     * @throws IllegalStateException 未登录
+     */
+    suspend fun sendFile(conversationId: String, conversationType: Int, source: File, displayName: String?, mime: String?): MessageEntity {
+        val db = databases.require()
+        val dir = workDir() ?: throw IllegalStateException("未登录")
+        val size = source.length()
+        val limit = uploader.uploadLimit()
+        if (limit != null && size > limit) {
+            log.info("文件 {} 字节超过上限 {}，不发送", size, limit)
+            throw FileTooLargeException(size, limit)
+        }
+        val name = FileTypes.safeName(displayName ?: "")
+        val (file, sha256) = withContext(io) {
+            dir.mkdirs()
+            val ext = FileTypes.extension(name).let { if (it.isEmpty()) "" else ".$it" }
+            val target = File(dir, "${UUID.randomUUID()}$ext")
+            if (!source.renameTo(target)) {
+                source.copyTo(target, overwrite = true)
+                source.delete()
+            }
+            target to FileDownloader.sha256Of(target)
+        }
+        val content = MessageContent.File(
+            FileInfo(url = "", name = name, size = size, mime = mime?.takeIf { it.isNotBlank() } ?: DEFAULT_MIME, sha256 = sha256),
+        )
+        val attachments = listOf(
+            MediaFileEntity(msgRowId = 0, role = MediaFileEntity.ROLE_ORIGINAL, localPath = file.path, state = MediaFileEntity.STATE_UPLOADING),
+        )
+        val saved = repository.enqueueMedia(conversationId, conversationType, content, attachments)
+        log.info("文件消息已写入，开始上传：msgId={}，会话={}，{}，{} 字节", saved.msgId, conversationId, name, size)
         start(db, saved.rowId)
         return saved
     }
@@ -355,6 +402,9 @@ class MediaSender(
 
         /** 语音的 MIME 类型 */
         const val VOICE_MIME = "audio/mp4"
+
+        /** 不知道类型时的 MIME */
+        const val DEFAULT_MIME = "application/octet-stream"
 
         /** 进度写库的间隔（百分点） */
         private const val PROGRESS_STEP = 10

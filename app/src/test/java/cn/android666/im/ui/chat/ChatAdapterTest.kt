@@ -8,6 +8,7 @@ import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.core.xmpp.extension.msg.ThumbnailInfo
 import cn.android666.im.data.message.ChatMessage
 import cn.android666.im.data.message.LocalMedia
+import cn.android666.im.data.message.MediaStatus
 import cn.android666.im.data.message.MessageState
 import cn.android666.im.data.message.SendError
 import cn.android666.im.data.message.ReplyPreview
@@ -64,7 +65,7 @@ class ChatAdapterTest {
             senderAvatarHash = "", content = content, body = "[图片]", state = MessageState.SENT, errorCode = null,
             serverTime = 0, replyToMsgId = null, retracted = false, retractedBy = null, media = media,
         )
-        fun media(thumb: String?, main: String?) = LocalMedia(thumb, main, uploading = false, failed = false, progress = 0)
+        fun media(thumb: String?, main: String?) = LocalMedia(thumb, main, MediaStatus.DONE, progress = 0)
 
         assertThat(ChatAdapter.imageModel(msg(withUrls, media(localThumb.path, null)), withUrls)).isEqualTo(localThumb)
         // 本地缩略图被清理：用地址

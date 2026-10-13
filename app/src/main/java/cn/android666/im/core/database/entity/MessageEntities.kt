@@ -188,7 +188,7 @@ data class ConversationWithPeer(
  * @property role 角色：[ROLE_ORIGINAL] 原文件 / [ROLE_THUMBNAIL] 缩略图
  * @property url 远程地址（上传成功后才有）
  * @property localPath 本地路径（已下载或待上传的文件）
- * @property state 状态：见 STATE_* 常量
+ * @property state 状态：见 STATE_* 常量（未下载且 progress > 0 表示下载已暂停，可续传）
  * @property progress 进度 0 ~ 100
  */
 @Entity(tableName = "media_file", indices = [Index(value = ["msgRowId", "role"], unique = true)])
@@ -222,5 +222,8 @@ data class MediaFileEntity(
 
         /** 失败 */
         const val STATE_FAILED = 4
+
+        /** 服务器上已不存在（下载时 HTTP 404，开发计划 5.6） */
+        const val STATE_EXPIRED = 5
     }
 }

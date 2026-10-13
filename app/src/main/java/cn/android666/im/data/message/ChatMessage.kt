@@ -45,22 +45,47 @@ sealed interface ReplyPreview {
     data object Missing : ReplyPreview
 }
 
+/** 附件的传输状态（界面模型，开发计划 5.4、5.6） */
+enum class MediaStatus {
+    /** 未下载（progress > 0 时为下载已暂停，可续传） */
+    NOT_DOWNLOADED,
+
+    /** 上传中 */
+    UPLOADING,
+
+    /** 下载中 */
+    DOWNLOADING,
+
+    /** 已上传 / 已下载 */
+    DONE,
+
+    /** 上传或下载失败 */
+    FAILED,
+
+    /** 服务器上已不存在 */
+    EXPIRED,
+}
+
 /**
  * 附件的本地状态（开发计划 5.4，界面模型）。
  *
  * @property thumbnailPath 缩略图的本地文件（本人发出的图片）；没有时界面按下载地址加载
  * @property filePath 原文件的本地文件
- * @property uploading 是否正在上传
- * @property failed 上传失败
- * @property progress 上传进度 0 ~ 100
+ * @property status 传输状态
+ * @property progress 上传 / 下载进度 0 ~ 100
  */
 data class LocalMedia(
     val thumbnailPath: String?,
     val filePath: String?,
-    val uploading: Boolean,
-    val failed: Boolean,
+    val status: MediaStatus,
     val progress: Int,
-)
+) {
+    /** 是否正在上传 */
+    val uploading: Boolean get() = status == MediaStatus.UPLOADING
+
+    /** 是否传输失败 */
+    val failed: Boolean get() = status == MediaStatus.FAILED
+}
 
 /**
  * 聊天页中的一条消息（界面模型，与 Room 实体解耦）。
@@ -148,8 +173,14 @@ internal fun MessageWithSender.toChatMessage(): ChatMessage {
             LocalMedia(
                 thumbnailPath = thumbnailPath,
                 filePath = mediaPath,
-                uploading = mediaState == MediaFileEntity.STATE_UPLOADING,
-                failed = mediaState == MediaFileEntity.STATE_FAILED,
+                status = when (mediaState) {
+                    MediaFileEntity.STATE_UPLOADING -> MediaStatus.UPLOADING
+                    MediaFileEntity.STATE_DOWNLOADING -> MediaStatus.DOWNLOADING
+                    MediaFileEntity.STATE_DONE -> MediaStatus.DONE
+                    MediaFileEntity.STATE_FAILED -> MediaStatus.FAILED
+                    MediaFileEntity.STATE_EXPIRED -> MediaStatus.EXPIRED
+                    else -> MediaStatus.NOT_DOWNLOADED
+                },
                 progress = mediaProgress ?: 0,
             )
         },

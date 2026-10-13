@@ -22,6 +22,7 @@ import cn.android666.im.data.file.MediaCache
 import cn.android666.im.data.conversation.ConversationRepository
 import cn.android666.im.data.message.ChatStates
 import cn.android666.im.data.message.IncomingMessageHandler
+import cn.android666.im.data.message.FileDownloads
 import cn.android666.im.data.message.MediaSender
 import cn.android666.im.data.message.VoicePlayback
 import cn.android666.im.data.message.MessageRepository
@@ -293,6 +294,17 @@ class AppContainer(context: Context) {
             databases = userDatabaseHolder,
             earpiece = { appSettingsStore.voiceEarpiece.first() },
             scope = CoroutineScope(SupervisorJob() + dispatchers.main),
+            io = dispatchers.io,
+        )
+    }
+
+    /** 文件消息的下载（开发计划 5.6）：保存在 `{filesDir}/files/{工号}`（决策记录 A126） */
+    val fileDownloads: FileDownloads by lazy {
+        FileDownloads(
+            databases = userDatabaseHolder,
+            downloader = fileDownloader,
+            filesRoot = { userDatabaseHolder.username?.let { File(appContext.filesDir, "files/$it") } },
+            scope = applicationScope,
             io = dispatchers.io,
         )
     }

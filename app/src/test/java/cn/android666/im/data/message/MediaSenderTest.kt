@@ -383,6 +383,49 @@ class MediaSenderTest {
         assertThat(content.file.duration).isEqualTo(VoiceRules.MAX_MILLIS)
     }
 
+    /** 文件：原名、类型、SHA-256 随消息发出；源文件被移走 */
+    @Test
+    fun sendFile_uploadsAndSends() = runTest {
+        val rig = rig()
+        val source = temp.newFile("tmp").apply { writeText("季度报告内容") }
+        val expectedSha = cn.android666.im.data.file.FileDownloader.sha256Of(source)
+
+        val saved = rig.sender.sendFile(BOB, ConversationEntity.TYPE_SINGLE, source, "季度报告.pdf", "application/pdf")
+        assertThat(saved.body).isEqualTo("[文件] 季度报告.pdf")
+        assertThat(source.exists()).isFalse()
+        runCurrent()
+
+        assertThat(uploader.uploaded.single()).endsWith(".pdf")
+        val content = MessageCodec.parse(client.sentMessages.single()).message.content as MessageContent.File
+        assertThat(content.file.name).isEqualTo("季度报告.pdf")
+        assertThat(content.file.mime).isEqualTo("application/pdf")
+        assertThat(content.file.sha256).isEqualTo(expectedSha)
+        assertThat(content.file.size).isEqualTo("季度报告内容".toByteArray().size.toLong())
+        assertThat(rig.message(saved.msgId).status).isEqualTo(MessageEntity.STATUS_SENT)
+    }
+
+    /** 文件超过上限：不写入消息，源文件保留（由调用方删除） */
+    @Test
+    fun sendFile_tooLarge() = runTest {
+        val rig = rig()
+        uploader.limit = 3
+        val source = temp.newFile("tmp").apply { writeText("1234") }
+        val error = runCatching { rig.sender.sendFile(BOB, ConversationEntity.TYPE_SINGLE, source, "a.txt", null) }.exceptionOrNull()
+        assertThat(error).isInstanceOf(FileTooLargeException::class.java)
+        assertThat(source.exists()).isTrue()
+        assertThat(rig.db.conversationDao().get(BOB)).isNull()
+    }
+
+    /** 没有文件名和类型：用"未命名"和 application/octet-stream */
+    @Test
+    fun sendFile_defaults() = runTest {
+        val rig = rig(login = false)
+        val saved = rig.sender.sendFile(BOB, ConversationEntity.TYPE_SINGLE, temp.newFile(), null, null)
+        val content = MessageJson.decodeContent(saved.type, saved.contentJson) as MessageContent.File
+        assertThat(content.file.name).isEqualTo("未命名")
+        assertThat(content.file.mime).isEqualTo("application/octet-stream")
+    }
+
     private companion object {
         const val BOB = "10002@im.example.com"
         const val CAROL = "10003@im.example.com"
