@@ -18,6 +18,7 @@ import cn.android666.im.core.xmpp.extension.msg.ThumbnailInfo
 import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.message.MessageJson
 import cn.android666.im.ui.media.ImagePreviewActivity
+import cn.android666.im.ui.profile.EmployeeProfileActivity
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -217,6 +218,36 @@ class ChatActivityTest {
                 assertThat(item.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("季度报告.pdf")
                 assertThat(item.findViewById<TextView>(R.id.status).text.toString()).isEqualTo("1.2 MB · 未下载")
                 assertThat(item.findViewById<TextView>(R.id.badge).text.toString()).isEqualTo("pdf")
+            }
+        }
+    }
+
+    /** 5.8 名片：显示同事的姓名与职务（以本地组织架构为准），点击打开资料卡 */
+    @Test
+    fun cardMessage_shownAndOpensProfile() {
+        runBlocking {
+            val content = MessageContent.Card(BOB, "旧名字")
+            app.container.userDatabaseHolder.require().messageDao().insert(
+                MessageEntity(
+                    msgId = "card", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "card",
+                    body = "[名片] 旧名字", contentJson = MessageJson.encodeContent(content), status = MessageEntity.STATUS_RECEIVED,
+                    serverTime = 1,
+                ),
+            )
+        }
+        val intent = ChatActivity.intent(app, BOB, ConversationKind.SINGLE)
+        ActivityScenario.launch<ChatActivity>(intent).use { scenario ->
+            lateinit var list: RecyclerView
+            scenario.onActivity { list = it.findViewById(R.id.list) }
+            waitUntil { list.findViewHolderForAdapterPosition(0)?.itemView?.findViewById<android.view.View>(R.id.cardBox)?.isVisible == true }
+            scenario.onActivity { activity ->
+                val item = list.findViewHolderForAdapterPosition(0)!!.itemView
+                val card = item.findViewById<android.view.View>(R.id.cardBox)
+                assertThat(item.findViewById<TextView>(R.id.bubble).isVisible).isFalse()
+                assertThat(card.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("李四")
+                card.performClick()
+                val started = shadowOf(activity).nextStartedActivity
+                assertThat(started.component!!.className).isEqualTo(EmployeeProfileActivity::class.java.name)
             }
         }
     }

@@ -32,19 +32,21 @@ data class ForwardTarget(val id: String, val kind: ConversationKind, val name: S
  * @param conversations 会话列表
  * @property org 组织架构（搜索同事）
  * @property selfJid 本人 bare JID（文件传输助手）
+ * @property colleaguesOnly 只选同事（发送名片，开发计划 5.8）：不显示"文件传输助手"，搜索到本人时按普通同事显示
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ForwardTargetViewModel(
     conversations: ConversationRepository,
     private val org: OrgRepository,
     private val selfJid: String?,
+    private val colleaguesOnly: Boolean = false,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
 
     /** 最近的会话（单聊）与文件传输助手 */
     private val recent: Flow<List<ForwardTarget>> = conversations.observeConversations().map { list ->
-        val self = listOfNotNull(selfJid?.let { ForwardTarget(it, ConversationKind.SELF, null, "") })
+        val self = if (colleaguesOnly) emptyList() else listOfNotNull(selfJid?.let { ForwardTarget(it, ConversationKind.SELF, null, "") })
         self + list.filter { it.kind == ConversationKind.SINGLE && it.id != selfJid }
             .map { ForwardTarget(it.id, it.kind, it.peerName ?: it.id.substringBefore('@'), it.avatarHash) }
     }
@@ -58,7 +60,7 @@ class ForwardTargetViewModel(
                 flow {
                     emit(
                         org.search(keyword.trim()).map {
-                            if (it.jid == selfJid) {
+                            if (it.jid == selfJid && !colleaguesOnly) {
                                 ForwardTarget(it.jid, ConversationKind.SELF, null, it.avatarHash)
                             } else {
                                 ForwardTarget(it.jid, ConversationKind.SINGLE, it.name, it.avatarHash)

@@ -366,6 +366,21 @@ class MessageRepository(
     }
 
     /**
+     * 发送同事名片（开发计划 5.8，协议规范 §7.6）。
+     *
+     * @param conversationId 会话 ID
+     * @param conversationType 会话类型（会话不存在时用于创建）
+     * @param jid 同事 bare JID
+     * @param name 同事姓名（对方本地组织架构中没有时兜底显示）
+     * @return 写入的消息
+     * @throws IllegalStateException 未登录
+     */
+    suspend fun sendCard(conversationId: String, conversationType: Int, jid: String, name: String): MessageEntity {
+        val content = MessageContent.Card(jid, name)
+        return enqueue(conversationId, conversationType, content, MessageCodec.fallbackBody(content), null, emptyList())
+    }
+
+    /**
      * 转发（开发计划 4.16，协议规范 §7.7）：逐条转发时每条生成新消息（新消息 ID，内容复制原消息，文件类直接复用原 URL）；
      * 合并转发时生成一条 merged 消息。已撤回的消息跳过；引用和 @ 不随之转发。
      *

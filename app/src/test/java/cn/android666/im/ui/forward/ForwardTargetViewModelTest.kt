@@ -55,4 +55,27 @@ class ForwardTargetViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    /** 名片模式：不显示文件传输助手；搜到自己时按普通同事（有姓名） */
+    @Test
+    fun colleaguesOnly() = runTest(mainDispatcherRule.testDispatcher) {
+        data.seed()
+        val db = data.holder.require()
+        db.conversationDao().upsert(ConversationEntity("10002@im.example.com", ConversationEntity.TYPE_SINGLE, draft = "x"))
+        db.conversationDao().upsert(ConversationEntity("10001@im.example.com", ConversationEntity.TYPE_SELF, draft = "x"))
+        val vm = ForwardTargetViewModel(ConversationRepository(data.holder), data.repository, "10001@im.example.com", colleaguesOnly = true)
+
+        vm.targets.test {
+            var list = awaitItem()
+            while (list.isEmpty()) list = awaitItem()
+            assertThat(list.map { it.id }).containsExactly("10002@im.example.com")
+
+            vm.onQueryChanged("zhangsan")
+            var result = awaitItem()
+            while (result.firstOrNull()?.id != "10001@im.example.com") result = awaitItem()
+            assertThat(result.single().kind).isEqualTo(ConversationKind.SINGLE)
+            assertThat(result.single().name).isEqualTo("张三")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }

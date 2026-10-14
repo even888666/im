@@ -28,6 +28,7 @@ import cn.android666.im.ui.base.collectWhenStarted
 
 /**
  * 选择转发对象（开发计划 4.16）：点击后确认"发送给 xx？"，确定后把目标返回给聊天页。
+ * 名片模式（开发计划 5.8）：选择要发送名片的同事，确认"发送 xx 的名片？"。
  */
 class ForwardTargetActivity : AppCompatActivity() {
 
@@ -35,10 +36,13 @@ class ForwardTargetActivity : AppCompatActivity() {
         viewModelFactory {
             initializer {
                 val container = appContainer
-                ForwardTargetViewModel(container.conversationRepository, container.orgRepository, container.selfJid())
+                ForwardTargetViewModel(container.conversationRepository, container.orgRepository, container.selfJid(), colleaguesOnly = cardMode)
             }
         }
     }
+
+    /** 是否为选择名片中的同事（开发计划 5.8） */
+    private val cardMode: Boolean get() = intent.getBooleanExtra(EXTRA_CARD, false)
 
     /**
      * 创建页面。
@@ -52,13 +56,14 @@ class ForwardTargetActivity : AppCompatActivity() {
         setContentView(binding.root)
         applySystemBarsPadding(binding.root)
         binding.toolbar.setNavigationOnClickListener { finish() }
+        if (cardMode) binding.toolbar.setTitle(R.string.card_pick_title)
 
         val adapter = TargetAdapter { target ->
             viewModel.pending = target
             MessageDialogFragment.showText(
                 fragmentManager = supportFragmentManager,
                 requestKey = REQUEST_CONFIRM,
-                message = getString(R.string.forward_confirm, displayName(target)),
+                message = getString(if (cardMode) R.string.card_confirm else R.string.forward_confirm, displayName(target)),
                 positive = R.string.forward_send,
                 negative = R.string.cancel,
             )
@@ -127,8 +132,12 @@ class ForwardTargetActivity : AppCompatActivity() {
         }
     }
 
-    /** 选择转发对象：输入为空，输出为目标（取消时为 null） */
-    class Contract : ActivityResultContract<Unit, ForwardTarget?>() {
+    /**
+     * 选择转发对象：输入为空，输出为目标（取消时为 null）。
+     *
+     * @property card true 时为选择要发送名片的同事（标题"选择同事"，不显示文件传输助手）
+     */
+    class Contract(private val card: Boolean = false) : ActivityResultContract<Unit, ForwardTarget?>() {
 
         /**
          * 创建打开页面的 Intent。
@@ -137,7 +146,8 @@ class ForwardTargetActivity : AppCompatActivity() {
          * @param input 无
          * @return Intent
          */
-        override fun createIntent(context: Context, input: Unit): Intent = Intent(context, ForwardTargetActivity::class.java)
+        override fun createIntent(context: Context, input: Unit): Intent =
+            Intent(context, ForwardTargetActivity::class.java).putExtra(EXTRA_CARD, card)
 
         /**
          * 解析结果。
@@ -157,6 +167,7 @@ class ForwardTargetActivity : AppCompatActivity() {
     private companion object {
         const val EXTRA_ID = "id"
         const val EXTRA_KIND = "kind"
+        const val EXTRA_CARD = "card"
 
         /** 确认框的结果 key */
         const val REQUEST_CONFIRM = "confirmForward"

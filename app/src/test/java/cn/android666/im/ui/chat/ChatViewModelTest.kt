@@ -15,6 +15,8 @@ import cn.android666.im.core.database.entity.EmployeeEntity
 import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.conversation.ConversationRepository
+import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.data.message.MessageJson
 import cn.android666.im.data.message.MessageRepository
 import cn.android666.im.data.sync.MamPager
 import cn.android666.im.data.sync.HistoryLoader
@@ -340,11 +342,11 @@ class ChatViewModelTest {
     /** 4.16 逐条转发：每条生成新消息（新 ID、内容相同），跳过已撤回的；退出多选并提示 */
     @Test
     fun forward_each() = runTest(mainDispatcherRule.testDispatcher) {
-        val card = cn.android666.im.core.xmpp.extension.msg.MessageContent.Card("10003@im.example.com", "王五")
+        val card = MessageContent.Card("10003@im.example.com", "王五")
         val a = insert("a", 1_000)
         val b = db.messageDao().insert(
             MessageEntity(msgId = "b", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = card.type,
-                body = "[名片] 王五", contentJson = cn.android666.im.data.message.MessageJson.encodeContent(card),
+                body = "[名片] 王五", contentJson = MessageJson.encodeContent(card),
                 status = MessageEntity.STATUS_RECEIVED, serverTime = 2_000),
         )
         val gone = insert("gone", 3_000)
@@ -444,6 +446,43 @@ class ChatViewModelTest {
         assertThat(loaded).isInStrictOrder(Comparator.reverseOrder<Int>())
         assertThat(loaded.zipWithNext { a, b -> a - b }.all { it == 1 }).isTrue()
         assertThat(items.last()).isInstanceOf(ChatListItem.TimeHeader::class.java)
+    }
+
+    /** 5.8 发送名片：内容为同事的 JID 与姓名，降级文本"[名片] 姓名"；列表中以本地组织架构为准显示 */
+    @Test
+    fun sendCard_andCardPeer() = runTest(mainDispatcherRule.testDispatcher) {
+        db.employeeDao().upsert(listOf(EmployeeEntity(CAROL, "10003", "王五", "wangwu", "ww", "d", "经理", "", "", "", 0, "h3")))
+        val (vm, _) = newVm()
+
+        vm.sendCard(CAROL)
+        runCurrent()
+
+        val saved = db.messageDao().last(BOB)!!
+        assertThat(saved.type).isEqualTo("card")
+        assertThat(saved.body).isEqualTo("[名片] 王五")
+        val item = vm.items.asSnapshot().first() as ChatListItem.Message
+        assertThat(item.card).isEqualTo(CardPeer(CAROL, "王五", "经理", "h3"))
+
+        // 组织架构中改名后显示新名字（以本地组织架构为准）
+        db.employeeDao().upsert(listOf(EmployeeEntity(CAROL, "10003", "王小五", "wangxiaowu", "wxw", "d", "", "", "", "", 0, "")))
+        val updated = vm.items.asSnapshot().first() as ChatListItem.Message
+        assertThat(updated.card).isEqualTo(CardPeer(CAROL, "王小五", "10003", ""))
+    }
+
+    /** 组织架构中没有该同事：用名片中的姓名，副标题为工号 */
+    @Test
+    fun cardPeer_unknownEmployee_fallback() = runTest(mainDispatcherRule.testDispatcher) {
+        val content = MessageContent.Card("20001@im.example.com", "外单位")
+        db.messageDao().insert(
+            MessageEntity(
+                msgId = "c", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "card",
+                body = "[名片] 外单位", contentJson = MessageJson.encodeContent(content),
+                status = MessageEntity.STATUS_RECEIVED, serverTime = 1,
+            ),
+        )
+        val (vm, _) = newVm()
+        val item = vm.items.asSnapshot().first() as ChatListItem.Message
+        assertThat(item.card).isEqualTo(CardPeer("20001@im.example.com", "外单位", "20001", ""))
     }
 
     private companion object {

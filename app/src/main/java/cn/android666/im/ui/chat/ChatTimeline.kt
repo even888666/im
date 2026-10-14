@@ -7,6 +7,16 @@ import java.time.Instant
 import java.time.ZoneId
 
 /** 聊天页列表中的一项：消息或时间分隔 */
+/**
+ * 名片消息中同事的显示信息（开发计划 5.8）。
+ *
+ * @property jid 同事 bare JID
+ * @property name 姓名（组织架构中有时为最新姓名，否则为名片中的姓名）
+ * @property subtitle 副标题：职务，没有职务时为工号
+ * @property avatarHash 头像哈希；没有时为空
+ */
+data class CardPeer(val jid: String, val name: String, val subtitle: String, val avatarHash: String)
+
 sealed interface ChatListItem {
 
     /** 稳定的 key（DiffUtil 判断是否同一项） */
@@ -16,8 +26,9 @@ sealed interface ChatListItem {
      * 消息。
      *
      * @property message 消息
+     * @property card 名片消息中同事的当前信息（开发计划 5.8，以本地组织架构为准）；不是名片时为 null
      */
-    data class Message(val message: ChatMessage) : ChatListItem {
+    data class Message(val message: ChatMessage, val card: CardPeer? = null) : ChatListItem {
         override val key: String get() = "m${message.rowId}"
     }
 

@@ -352,7 +352,7 @@ class ChatViewModel(
     @OptIn(ExperimentalPagingApi::class)
     val items: Flow<PagingData<ChatListItem>> = messages.pagedMessages(conversationId, history?.mediator(conversationId))
         .map { page ->
-            page.map<_, ChatListItem> { ChatListItem.Message(it) }
+            page.map<_, ChatListItem> { ChatListItem.Message(it, (it.content as? MessageContent.Card)?.let { card -> cardPeer(card) }) }
                 .insertSeparators { newer, older ->
                     ChatTimeline.separator((newer as? ChatListItem.Message)?.message, (older as? ChatListItem.Message)?.message)
                 }
@@ -573,6 +573,42 @@ class ChatViewModel(
                 } finally {
                     imported.file.delete()
                 }
+            }
+        }
+    }
+
+    /**
+     * 名片中同事的显示信息：以本地组织架构为准（协议规范 §7.6），组织架构中没有时用名片中的姓名。
+     *
+     * @param card 名片
+     * @return 显示信息
+     */
+    private suspend fun cardPeer(card: MessageContent.Card): CardPeer {
+        val employee = org.employee(card.jid)
+        val empNo = card.jid.substringBefore('@')
+        return CardPeer(
+            jid = card.jid,
+            name = employee?.name ?: card.name.ifBlank { empNo },
+            subtitle = employee?.title?.takeIf { it.isNotBlank() } ?: empNo,
+            avatarHash = employee?.avatarHash.orEmpty(),
+        )
+    }
+
+    /**
+     * 发送同事名片（开发计划 5.8）。
+     *
+     * @param jid 同事 bare JID
+     */
+    fun sendCard(jid: String) {
+        viewModelScope.launch {
+            try {
+                val name = org.employee(jid)?.name ?: jid.substringBefore('@')
+                messages.sendCard(conversationId, kind.toEntityType(), jid, name)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("名片发送出错：会话={}", conversationId, e)
+                eventChannel.send(ChatEvent.Toast(R.string.chat_send_error))
             }
         }
     }

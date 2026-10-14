@@ -47,6 +47,7 @@ import cn.android666.im.core.xmpp.extension.msg.MessageContent
 import cn.android666.im.ui.forward.ForwardTargetActivity
 import cn.android666.im.ui.forward.MergedMessageActivity
 import cn.android666.im.ui.media.ImagePreviewActivity
+import cn.android666.im.ui.profile.EmployeeProfileActivity
 import cn.android666.im.ui.media.PreviewImage
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
@@ -359,6 +360,11 @@ class ChatActivity : AppCompatActivity() {
         if (uris.isNotEmpty()) confirmSendImages(uris)
     }
 
+    /** 选择要发送名片的同事（开发计划 5.8） */
+    private val pickCard = registerForActivityResult(ForwardTargetActivity.Contract(card = true)) { target ->
+        if (target != null) viewModel.sendCard(target.id)
+    }
+
     /** 选择文件（可多选） */
     private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) viewModel.sendFiles(uris.take(MAX_PICK))
@@ -408,11 +414,13 @@ class ChatActivity : AppCompatActivity() {
             menu.add(0, MENU_ALBUM, 0, R.string.chat_pick_album)
             menu.add(0, MENU_CAMERA, 1, R.string.chat_take_photo)
             menu.add(0, MENU_FILE, 2, R.string.chat_pick_file)
+            menu.add(0, MENU_CARD, 3, R.string.chat_pick_card)
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_ALBUM -> pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     MENU_CAMERA -> launchCamera()
                     MENU_FILE -> pickFiles.launch(arrayOf("*/*"))
+                    MENU_CARD -> pickCard.launch(Unit)
                 }
                 true
             }
@@ -449,7 +457,7 @@ class ChatActivity : AppCompatActivity() {
     }
 
     /**
-     * 点击消息：合并转发打开聊天记录，图片打开大图预览，文件打开或下载。
+     * 点击消息：合并转发打开聊天记录，图片打开大图预览，文件打开或下载，名片打开同事资料卡。
      *
      * @param message 消息
      */
@@ -471,6 +479,7 @@ class ChatActivity : AppCompatActivity() {
                 ),
             )
             is MessageContent.File -> viewModel.openFile(message)
+            is MessageContent.Card -> EmployeeProfileActivity.start(this, content.jid)
             else -> Unit
         }
     }
@@ -584,6 +593,9 @@ class ChatActivity : AppCompatActivity() {
 
         /** "更多"菜单：文件 */
         private const val MENU_FILE = 3
+
+        /** "更多"菜单：名片 */
+        private const val MENU_CARD = 4
 
         /** 导入的图片副本目录（缓存目录下） */
         private const val IMPORT_DIR = "import"

@@ -207,6 +207,11 @@
     <string name="chat_file_expired">文件已过期或已被清理</string>
     <string name="chat_file_no_app">没有可以打开此文件的应用</string>
     <string name="chat_file_open_with">打开方式</string>
+    <!-- 名片消息（开发计划 5.8） -->
+    <string name="chat_card_label">个人名片</string>
+    <string name="chat_pick_card">名片</string>
+    <string name="card_pick_title">选择同事</string>
+    <string name="card_confirm">发送 %1$s 的名片？</string>
     <string name="preview_save">保存</string>
     <string name="preview_saved">已保存到相册</string>
     <string name="preview_save_failed">保存失败</string>

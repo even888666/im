@@ -27,6 +27,7 @@ import cn.android666.im.databinding.ItemChatInBinding
 import cn.android666.im.databinding.ItemChatNoticeBinding
 import cn.android666.im.databinding.ItemChatOutBinding
 import cn.android666.im.databinding.ItemChatTimeBinding
+import cn.android666.im.databinding.ViewChatCardBinding
 import cn.android666.im.databinding.ViewChatFileBinding
 import cn.android666.im.databinding.ViewChatImageBinding
 import cn.android666.im.databinding.ViewChatVoiceBinding
@@ -38,7 +39,8 @@ import java.io.File
 
 /**
  * 聊天页消息列表（开发计划 4.8）：时间分隔、对方的消息、本人的消息、系统提示（撤回）。
- * 图片消息显示缩略图（5.4）、语音消息显示语音气泡（5.5）、文件消息显示文件卡片（5.6）；其余非文本消息暂时显示降级文本（如"[视频]"）。
+ * 图片消息显示缩略图（5.4）、语音消息显示语音气泡（5.5）、文件消息显示文件卡片（5.6）、名片消息显示名片（5.8）；
+ * 其余非文本消息暂时显示降级文本（如"[视频]"）。
  *
  * @property showReadState 是否显示"未读 / 已读"（单聊显示；文件传输助手不显示；群聊的已读人数见 M6）
  * @property now 当前时间（毫秒），计算时间分隔的文字
@@ -149,8 +151,14 @@ class ChatAdapter(
         when (holder) {
             is TimeHolder -> holder.binding.text.text =
                 timeHeaderText(holder.itemView.context, ChatTimeline.label((item as ChatListItem.TimeHeader).time, now()))
-            is InHolder -> bindIn(holder.binding, (item as ChatListItem.Message).message)
-            is OutHolder -> bindOut(holder.binding, (item as ChatListItem.Message).message)
+            is InHolder -> {
+                bindIn(holder.binding, (item as ChatListItem.Message).message)
+                bindCard(holder.binding.cardBox, item)
+            }
+            is OutHolder -> {
+                bindOut(holder.binding, (item as ChatListItem.Message).message)
+                bindCard(holder.binding.cardBox, item)
+            }
             is NoticeHolder -> {
                 val message = (item as? ChatListItem.Message)?.message ?: return
                 holder.binding.text.setText(if (message.outgoing) R.string.chat_retracted_self else R.string.chat_retracted_peer)
@@ -357,6 +365,28 @@ class ChatAdapter(
     }
 
     /**
+     * 名片消息（开发计划 5.8）：同事的头像、姓名、职务（以本地组织架构为准）。点击查看同事资料（多选模式中为切换选中），
+     * 长按弹出操作菜单。
+     *
+     * @param box 名片布局
+     * @param item 列表项（含同事的当前信息）
+     */
+    private fun bindCard(box: ViewChatCardBinding, item: ChatListItem.Message) {
+        val card = item.card
+        box.root.isVisible = card != null && item.message.content is MessageContent.Card
+        if (card == null) return
+        val message = item.message
+        box.avatar.bind(card.name, card.jid, card.avatarHash)
+        box.name.text = card.name
+        box.subtitle.text = card.subtitle
+        box.root.setOnClickListener { if (selection == null) onOpen(message) else onToggle(message) }
+        box.root.setOnLongClickListener {
+            if (selection == null) onLongClick(message)
+            selection == null
+        }
+    }
+
+    /**
      * 显示引用的原消息。
      *
      * @param view 引用预览
@@ -397,7 +427,8 @@ class ChatAdapter(
          * @return 图片、语音为 true
          */
         fun showsMedia(message: ChatMessage): Boolean =
-            message.content is MessageContent.Image || message.content is MessageContent.Voice || message.content is MessageContent.File
+            message.content is MessageContent.Image || message.content is MessageContent.Voice ||
+                message.content is MessageContent.File || message.content is MessageContent.Card
 
         /** 文件类型标签最多显示的字符数 */
         private const val BADGE_MAX_CHARS = 4
