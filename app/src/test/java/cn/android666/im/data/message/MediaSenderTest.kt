@@ -19,6 +19,7 @@ import cn.android666.im.data.file.MediaCache
 import cn.android666.im.data.file.UploadFailedException
 import cn.android666.im.testing.FakeImageProcessor
 import cn.android666.im.testing.FakeUploader
+import cn.android666.im.testing.FakeVideoProcessor
 import cn.android666.im.testing.FakeXmppClient
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CompletableDeferred
@@ -58,6 +59,8 @@ class MediaSenderTest {
     }
 
     private val uploader = FakeUploader()
+
+    private val videos = FakeVideoProcessor()
 
     @After
     fun tearDown() {
@@ -104,7 +107,7 @@ class MediaSenderTest {
         val repository = MessageRepository(newHolder, queue, ServerClock(clock), ids) { "10001@im.example.com" }
         val sender = MediaSender(
             client, newHolder, repository, uploader, FakeImageProcessor(),
-            workDir = { workDir }, cache = { MediaCache(cacheDir) }, scope = backgroundScope, io = dispatcher,
+            workDir = { workDir }, cache = { MediaCache(cacheDir) }, scope = backgroundScope, io = dispatcher, videos = videos,
         )
         runCurrent()
         return Rig(sender, repository, db, workDir, cacheDir)
@@ -454,6 +457,48 @@ class MediaSenderTest {
         val content = MessageJson.decodeContent(saved.type, saved.contentJson) as MessageContent.File
         assertThat(content.file.name).isEqualTo("未命名")
         assertThat(content.file.mime).isEqualTo("application/octet-stream")
+    }
+
+    /** 视频：压缩进度回调，先传封面再传视频，消息带尺寸、时长 */
+    @Test
+    fun sendVideo_uploadsCoverThenVideo() = runTest {
+        val rig = rig()
+        val progress = mutableListOf<Int>()
+
+        val saved = rig.sender.sendVideo(BOB, ConversationEntity.TYPE_SINGLE, temp.newFile(), "旅行.mov") { progress += it }
+        assertThat(progress).containsExactly(30, 100).inOrder()
+        assertThat(saved.body).isEqualTo("[视频]")
+        runCurrent()
+
+        assertThat(uploader.uploaded).containsExactly("video_thumb.jpg", "video.mp4").inOrder()
+        val content = MessageCodec.parse(client.sentMessages.single()).message.content as MessageContent.Video
+        assertThat(content.file.name).isEqualTo("旅行.mp4")
+        assertThat(content.file.mime).isEqualTo("video/mp4")
+        assertThat(content.file.width to content.file.height).isEqualTo(1280 to 720)
+        assertThat(content.file.duration).isEqualTo(5_000)
+        assertThat(content.thumbnail!!.url).endsWith("video_thumb.jpg")
+        assertThat(rig.message(saved.msgId).status).isEqualTo(MessageEntity.STATUS_SENT)
+    }
+
+    /** 压缩后仍超过上限：不写入，删除处理后的文件 */
+    @Test
+    fun sendVideo_tooLarge() = runTest {
+        val rig = rig()
+        uploader.limit = FakeVideoProcessor.MAIN_SIZE - 1L
+        val error = runCatching { rig.sender.sendVideo(BOB, ConversationEntity.TYPE_SINGLE, temp.newFile(), null) }.exceptionOrNull()
+        assertThat(error).isInstanceOf(FileTooLargeException::class.java)
+        assertThat(rig.workDir.listFiles()).isEmpty()
+        assertThat(rig.db.conversationDao().get(BOB)).isNull()
+    }
+
+    /** 压缩失败：抛出，不写入 */
+    @Test
+    fun sendVideo_processFails() = runTest {
+        val rig = rig()
+        videos.error = java.io.IOException("无法解码")
+        val error = runCatching { rig.sender.sendVideo(BOB, ConversationEntity.TYPE_SINGLE, temp.newFile(), null) }.exceptionOrNull()
+        assertThat(error).isInstanceOf(java.io.IOException::class.java)
+        assertThat(rig.db.conversationDao().get(BOB)).isNull()
     }
 
     private companion object {

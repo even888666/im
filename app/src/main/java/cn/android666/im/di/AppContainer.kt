@@ -64,6 +64,7 @@ import cn.android666.im.core.common.SystemTimeClock
 import cn.android666.im.core.common.UuidIdGenerator
 import cn.android666.im.core.media.AndroidVoicePlayer
 import cn.android666.im.core.media.ImageCompressor
+import cn.android666.im.core.media.Media3VideoProcessor
 import cn.android666.im.core.log.LogFilePrefixManager
 import cn.android666.im.core.log.LogFilePrefixStore
 import kotlinx.coroutines.CoroutineScope
@@ -282,6 +283,7 @@ class AppContainer(context: Context) {
             cache = ::mediaCache,
             scope = applicationScope,
             io = dispatchers.io,
+            videos = Media3VideoProcessor(appContext, dispatchers.io),
         )
     }
 

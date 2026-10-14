@@ -164,3 +164,34 @@ class FakeVoicePlayer : cn.android666.im.core.media.VoicePlayer {
         callback?.invoke()
     }
 }
+
+/** 假的视频处理：生成 [MAIN_SIZE] 字节的视频与 100 字节的封面，1280×720、5 秒；可设置失败 */
+class FakeVideoProcessor : cn.android666.im.core.media.VideoProcessor {
+
+    /** 处理时抛出的异常 */
+    var error: java.io.IOException? = null
+
+    /** 报告过的进度 */
+    val progress = mutableListOf<Int>()
+
+    override suspend fun prepare(source: File, outDir: File, onProgress: (Int) -> Unit): cn.android666.im.core.media.PreparedVideo {
+        error?.let { throw it }
+        outDir.mkdirs()
+        listOf(30, 100).forEach {
+            progress += it
+            onProgress(it)
+        }
+        val video = File(outDir, "video.mp4").apply { writeBytes(ByteArray(MAIN_SIZE)) }
+        val cover = File(outDir, "video_thumb.jpg").apply { writeBytes(ByteArray(100)) }
+        return cn.android666.im.core.media.PreparedVideo(
+            video,
+            cn.android666.im.core.media.VideoInfo(1280, 720, 5_000),
+            ProcessedImage(cover, 320, 180, "image/jpeg"),
+        )
+    }
+
+    companion object {
+        /** 视频大小 */
+        const val MAIN_SIZE = 3000
+    }
+}

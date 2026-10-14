@@ -129,6 +129,18 @@ class ImageCompressor : ImageProcessor {
     }
 
     /**
+     * 把任意尺寸的图片（如视频的第一帧，开发计划 5.7）生成缩略图：缩小到长边 ≤ [THUMB_LONG_SIDE]，JPEG ≤ [THUMB_MAX_BYTES]。
+     *
+     * @param bitmap 图片
+     * @return 最终尺寸与 JPEG 数据
+     */
+    fun thumbnailOf(bitmap: Bitmap): Pair<Dimension, ByteArray> {
+        val target = ImageSizing.fit(bitmap.width, bitmap.height, THUMB_LONG_SIDE)
+        val scaled = if (target.width == bitmap.width && target.height == bitmap.height) bitmap else bitmap.scale(target.width, target.height)
+        return thumbnail(scaled)
+    }
+
+    /**
      * 生成不超过 [THUMB_MAX_BYTES] 的缩略图：先逐步降低质量，到下限仍超出时缩小 [THUMB_SHRINK] 倍重试。
      *
      * @param bitmap 长边已不超过 [THUMB_LONG_SIDE] 的图片

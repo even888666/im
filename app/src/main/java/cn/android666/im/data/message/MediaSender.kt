@@ -6,6 +6,7 @@ import cn.android666.im.core.database.entity.MediaFileEntity
 import cn.android666.im.core.database.entity.MessageEntity
 import cn.android666.im.core.log.Logs
 import cn.android666.im.core.media.ImageProcessor
+import cn.android666.im.core.media.VideoProcessor
 import cn.android666.im.core.xmpp.ConnectionState
 import cn.android666.im.core.xmpp.XmppClient
 import cn.android666.im.core.xmpp.extension.msg.FileInfo
@@ -51,6 +52,7 @@ import java.util.concurrent.ConcurrentHashMap
  * @property scope 应用级协程作用域（上传不随界面销毁而取消）
  * @property io IO 调度器（图片处理、文件操作）
  * @property connectWaitMillis 未连接时最长等待时间
+ * @property videos 视频处理（开发计划 5.7）；null 时不能发视频
  */
 class MediaSender(
     private val client: XmppClient,
@@ -63,6 +65,7 @@ class MediaSender(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val connectWaitMillis: Long = CONNECT_WAIT_MILLIS,
+    private val videos: VideoProcessor? = null,
 ) {
 
     private val log = Logs.file(TAG)
@@ -138,6 +141,62 @@ class MediaSender(
         )
         val saved = repository.enqueueMedia(conversationId, conversationType, content, attachments)
         log.info("图片消息已写入，开始上传：msgId={}，会话={}，{} 字节，原图={}", saved.msgId, conversationId, size, original)
+        start(db, saved.rowId)
+        return saved
+    }
+
+    /**
+     * 发送视频（协议规范 §7.4）：压缩（长边 ≤ 1280、H.264 + AAC）、生成封面后写入，先传封面再传视频。
+     * 压缩可能需要较长时间，期间通过 [onProgress] 报告进度；压缩完成后才写入消息。
+     *
+     * @param conversationId 会话 ID
+     * @param conversationType 会话类型
+     * @param source 用户选择的视频（已复制到本地，调用方负责删除）
+     * @param displayName 原始文件名；不知道时为 null
+     * @param onProgress 压缩进度 0 ~ 100
+     * @return 写入的消息
+     * @throws IOException 不是视频或压缩失败
+     * @throws FileTooLargeException 压缩后仍超过服务器的上传上限（此时不写入消息）
+     * @throws IllegalStateException 未登录或不支持视频
+     */
+    suspend fun sendVideo(
+        conversationId: String,
+        conversationType: Int,
+        source: File,
+        displayName: String?,
+        onProgress: (Int) -> Unit = {},
+    ): MessageEntity {
+        val processor = videos ?: throw IllegalStateException("不支持发送视频")
+        val db = databases.require()
+        val dir = workDir() ?: throw IllegalStateException("未登录")
+        val prepared = processor.prepare(source, dir, onProgress)
+        val size = prepared.file.length()
+        val limit = uploader.uploadLimit()
+        if (limit != null && size > limit) {
+            prepared.file.delete()
+            prepared.cover.file.delete()
+            log.info("视频 {} 字节超过上限 {}，不发送", size, limit)
+            throw FileTooLargeException(size, limit)
+        }
+        val base = displayName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: prepared.file.nameWithoutExtension
+        val content = MessageContent.Video(
+            file = FileInfo(
+                url = "",
+                name = FileTypes.safeName("$base.mp4"),
+                size = size,
+                mime = VIDEO_MIME,
+                width = prepared.info.width,
+                height = prepared.info.height,
+                duration = prepared.info.durationMillis,
+            ),
+            thumbnail = ThumbnailInfo(url = "", width = prepared.cover.width, height = prepared.cover.height, mime = prepared.cover.mime),
+        )
+        val attachments = listOf(
+            MediaFileEntity(msgRowId = 0, role = MediaFileEntity.ROLE_ORIGINAL, localPath = prepared.file.path, state = MediaFileEntity.STATE_UPLOADING),
+            MediaFileEntity(msgRowId = 0, role = MediaFileEntity.ROLE_THUMBNAIL, localPath = prepared.cover.file.path, state = MediaFileEntity.STATE_UPLOADING),
+        )
+        val saved = repository.enqueueMedia(conversationId, conversationType, content, attachments)
+        log.info("视频消息已写入，开始上传：msgId={}，会话={}，{} 字节，{} 毫秒", saved.msgId, conversationId, size, prepared.info.durationMillis)
         start(db, saved.rowId)
         return saved
     }
@@ -408,6 +467,9 @@ class MediaSender(
 
         /** 语音的 MIME 类型 */
         const val VOICE_MIME = "audio/mp4"
+
+        /** 视频的 MIME 类型 */
+        const val VIDEO_MIME = "video/mp4"
 
         /** 不知道类型时的 MIME */
         const val DEFAULT_MIME = "application/octet-stream"
