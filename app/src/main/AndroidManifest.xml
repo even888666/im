@@ -89,6 +89,13 @@
             android:exported="false"
             android:theme="@style/Theme.Im.Preview" />
 
+        <!-- 视频播放（开发计划 5.7） -->
+        <activity
+            android:name=".ui.media.VideoPlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false"
+            android:theme="@style/Theme.Im.Preview" />
+
         <!-- 聊天页（开发计划 4.8） -->
         <activity
             android:name=".ui.chat.ChatActivity"

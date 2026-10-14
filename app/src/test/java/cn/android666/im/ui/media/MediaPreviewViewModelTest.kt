@@ -16,8 +16,8 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.IOException
 
-/** [ImagePreviewViewModel] 测试：本地 / 缓存 / 下载、过期、失败重试、保存 */
-class ImagePreviewViewModelTest {
+/** [MediaPreviewViewModel] 测试：本地 / 缓存 / 下载、过期、失败重试、保存 */
+class MediaPreviewViewModelTest {
 
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
@@ -63,8 +63,8 @@ class ImagePreviewViewModelTest {
      * @param cache 媒体缓存
      * @return ViewModel
      */
-    private fun vm(url: String = URL, localPath: String? = null, cache: MediaCache? = MediaCache(temp.root)) = ImagePreviewViewModel(
-        PreviewImage(url, "a.jpg", "image/jpeg", null, localPath, null),
+    private fun vm(url: String = URL, localPath: String? = null, cache: MediaCache? = MediaCache(temp.root)) = MediaPreviewViewModel(
+        PreviewMedia(url, "a.jpg", "image/jpeg", null, localPath, null),
         downloader,
         cache,
     ) { file, name, mime ->

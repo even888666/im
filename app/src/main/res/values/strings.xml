@@ -212,6 +212,13 @@
     <string name="chat_pick_card">名片</string>
     <string name="card_pick_title">选择同事</string>
     <string name="card_confirm">发送 %1$s 的名片？</string>
+    <!-- 视频消息（开发计划 5.7） -->
+    <string name="chat_video">视频</string>
+    <string name="chat_pick_video">视频</string>
+    <string name="chat_video_processing">正在处理视频 %d%%</string>
+    <string name="chat_video_invalid">无法处理该视频</string>
+    <string name="chat_video_expired">视频已过期或已被清理</string>
+    <string name="chat_video_duration">%1$d:%2$02d</string>
     <string name="preview_save">保存</string>
     <string name="preview_saved">已保存到相册</string>
     <string name="preview_save_failed">保存失败</string>

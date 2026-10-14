@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
 
-/** 大图的加载状态 */
+/** 原图 / 视频的加载状态 */
 sealed interface PreviewState {
 
     /**
@@ -46,16 +46,16 @@ sealed interface PreviewState {
 }
 
 /**
- * 要预览的图片。
+ * 要预览的图片或视频（开发计划 5.4、5.7）。
  *
- * @property url 原图下载地址（还没上传完时为空）
+ * @property url 原图 / 视频的下载地址（还没上传完时为空）
  * @property name 原始文件名（保存到相册时使用）
  * @property mime MIME 类型
  * @property sha256 SHA-256（消息中带了时校验）
  * @property localPath 原图的本地文件（本人发出的）
  * @property thumbnail 缩略图（本地文件路径或下载地址），原图加载完成前显示
  */
-data class PreviewImage(
+data class PreviewMedia(
     val url: String,
     val name: String,
     val mime: String,
@@ -65,16 +65,16 @@ data class PreviewImage(
 )
 
 /**
- * 大图预览（开发计划 5.4）：本地有原图（本人发出的、之前看过的）直接显示；没有时先显示缩略图并下载原图到媒体缓存；
- * 404 提示"已过期"；可保存到相册。
+ * 大图预览（开发计划 5.4）与视频播放（5.7）共用：本地有原文件（本人发出的、之前看过的）直接使用；没有时先显示缩略图 / 封面
+ * 并下载原文件到媒体缓存；404 提示"已过期"；可保存到相册（视频页不提供保存）。
  *
  * @property image 要预览的图片
  * @property downloader 下载
  * @property cache 当前账号的媒体缓存；未登录时为 null（只能显示本地文件）
  * @property saver 保存到相册（文件、文件名、MIME 类型），失败时抛出 IOException
  */
-class ImagePreviewViewModel(
-    val image: PreviewImage,
+class MediaPreviewViewModel(
+    val image: PreviewMedia,
     private val downloader: Downloader,
     private val cache: MediaCache?,
     private val saver: suspend (File, String, String) -> Unit,

@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 聊天页的图片消息（开发计划 5.4）：圆角缩略图；本人发出、上传中时叠加进度，上传失败时叠加提示 -->
+<!--
+    聊天页的图片消息（开发计划 5.4）：圆角缩略图；本人发出、上传中时叠加进度，上传失败时叠加提示。
+    视频消息（开发计划 5.7）也用此布局：缩略图为封面，中间显示播放图标，右下角显示时长。
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -17,6 +20,32 @@
         android:contentDescription="@string/chat_image"
         android:scaleType="centerCrop"
         app:shapeAppearanceOverlay="@style/ShapeAppearance.Im.ChatImage" />
+
+    <!-- 视频：播放图标 -->
+    <ImageView
+        android:id="@+id/play"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_play_circle"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <!-- 视频：时长 -->
+    <TextView
+        android:id="@+id/videoDuration"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="6dp"
+        android:shadowColor="#99000000"
+        android:shadowRadius="3"
+        android:textAppearance="?attr/textAppearanceLabelSmall"
+        android:textColor="@android:color/white"
+        android:visibility="gone"
+        tools:text="0:15"
+        tools:visibility="visible" />
 
     <!-- 上传进度 -->
     <TextView

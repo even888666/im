@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 视频播放（开发计划 5.7）：黑底全屏；下载完成前显示封面与进度，完成后用 Media3 PlayerView 播放 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <!-- 封面（下载视频期间显示） -->
+    <ImageView
+        android:id="@+id/cover"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/chat_video"
+        android:scaleType="fitCenter" />
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/player"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        app:show_buffering="when_playing" />
+
+    <!-- 下载进度 / 已过期 / 失败（点击重试） -->
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="48dp"
+        android:background="@color/chat_image_scrim"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="@android:color/white"
+        android:visibility="gone"
+        tools:text="正在加载 30%"
+        tools:visibility="visible" />
+
+    <ImageButton
+        android:id="@+id/close"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|start"
+        android:layout_margin="16dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/preview_close"
+        android:src="@drawable/ic_close"
+        app:tint="@android:color/white" />
+</FrameLayout>

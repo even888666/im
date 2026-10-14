@@ -15,6 +15,7 @@ import cn.android666.im.R
 import cn.android666.im.core.media.ImageSizing
 import cn.android666.im.core.xmpp.extension.msg.FileInfo
 import cn.android666.im.core.xmpp.extension.msg.MessageContent
+import cn.android666.im.core.xmpp.extension.msg.ThumbnailInfo
 import cn.android666.im.data.file.FileCategory
 import cn.android666.im.data.file.FileTypes
 import cn.android666.im.data.message.ChatMessage
@@ -39,8 +40,8 @@ import java.io.File
 
 /**
  * 聊天页消息列表（开发计划 4.8）：时间分隔、对方的消息、本人的消息、系统提示（撤回）。
- * 图片消息显示缩略图（5.4）、语音消息显示语音气泡（5.5）、文件消息显示文件卡片（5.6）、名片消息显示名片（5.8）；
- * 其余非文本消息暂时显示降级文本（如"[视频]"）。
+ * 图片消息显示缩略图（5.4）、语音消息显示语音气泡（5.5）、文件消息显示文件卡片（5.6）、视频显示封面（5.7）、
+ * 名片消息显示名片（5.8）；其余非文本消息（通话记录等）暂时显示降级文本。
  *
  * @property showReadState 是否显示"未读 / 已读"（单聊显示；文件传输助手不显示；群聊的已读人数见 M6）
  * @property now 当前时间（毫秒），计算时间分隔的文字
@@ -255,24 +256,30 @@ class ChatAdapter(
     }
 
     /**
-     * 图片消息（开发计划 5.4）：按图片宽高显示缩略图（文字气泡由调用方隐藏）；本人发出、上传中时显示进度，上传失败时提示。
+     * 图片消息（开发计划 5.4）、视频消息（5.7）：按宽高显示缩略图 / 封面（文字气泡由调用方隐藏），视频叠加播放图标与时长；
+     * 本人发出、上传中时显示进度，上传失败时提示。
      * 点击查看大图（多选模式中为切换选中），长按弹出操作菜单。
      *
      * @param box 图片布局
      * @param message 消息
      */
     private fun bindImage(box: ViewChatImageBinding, message: ChatMessage) {
-        val image = message.content as? MessageContent.Image
-        box.root.isVisible = image != null
-        if (image == null) {
+        val visual = visualOf(message.content)
+        box.root.isVisible = visual != null
+        if (visual == null) {
             box.image.dispose()
             box.image.setImageDrawable(null)
             return
         }
+        val (file, thumbnail) = visual
+        val video = message.content is MessageContent.Video
+        box.play.isVisible = video
+        box.videoDuration.isVisible = video && file.duration != null
+        file.duration?.let { box.videoDuration.text = durationText(box.root.context, it) }
         val density = box.root.resources.displayMetrics.density
         val size = ImageSizing.displaySize(
-            width = image.thumbnail?.width ?: image.file.width ?: 0,
-            height = image.thumbnail?.height ?: image.file.height ?: 0,
+            width = thumbnail?.width ?: file.width ?: 0,
+            height = thumbnail?.height ?: file.height ?: 0,
             maxSide = (IMAGE_MAX_DP * density).toInt(),
             minSide = (IMAGE_MIN_DP * density).toInt(),
         )
@@ -280,7 +287,7 @@ class ChatAdapter(
             width = size.width
             height = size.height
         }
-        box.image.load(imageModel(message, image))
+        box.image.load(imageModel(message, file, thumbnail))
         val media = message.media
         box.progress.isVisible = media != null && (media.uploading || media.failed)
         when {
@@ -427,7 +434,7 @@ class ChatAdapter(
          * @return 图片、语音为 true
          */
         fun showsMedia(message: ChatMessage): Boolean =
-            message.content is MessageContent.Image || message.content is MessageContent.Voice ||
+            message.content is MessageContent.Image || message.content is MessageContent.Video || message.content is MessageContent.Voice ||
                 message.content is MessageContent.File || message.content is MessageContent.Card
 
         /** 文件类型标签最多显示的字符数 */
@@ -490,17 +497,45 @@ class ChatAdapter(
         private const val IMAGE_MIN_DP = 60
 
         /**
-         * 图片消息显示的内容：本地缩略图（本人发出的）→ 缩略图地址 → 原图地址 → 本地原图（还没上传完时）。
+         * 图片 / 视频消息显示的内容：本地缩略图（本人发出的）→ 缩略图地址 → 原图地址 → 本地原图（还没上传完时）；
+         * 视频只用封面。
          *
          * @param message 消息
-         * @param image 图片内容
+         * @param file 文件描述
+         * @param thumbnail 缩略图 / 封面
          * @return Coil 的加载对象（File 或 URL）；都没有时为 null
          */
-        fun imageModel(message: ChatMessage, image: MessageContent.Image): Any? {
+        fun imageModel(message: ChatMessage, file: FileInfo, thumbnail: ThumbnailInfo?): Any? {
             message.media?.thumbnailPath?.let(::File)?.takeIf { it.exists() }?.let { return it }
-            image.thumbnail?.url?.takeIf { it.isNotEmpty() }?.let { return it }
-            image.file.url.takeIf { it.isNotEmpty() }?.let { return it }
+            thumbnail?.url?.takeIf { it.isNotEmpty() }?.let { return it }
+            // 视频没有封面时不能把视频地址交给图片加载器
+            if (message.content is MessageContent.Video) return null
+            file.url.takeIf { it.isNotEmpty() }?.let { return it }
             return message.media?.filePath?.let(::File)?.takeIf { it.exists() }
+        }
+
+        /**
+         * 以图片样式显示的内容：图片或视频的文件描述与缩略图 / 封面。
+         *
+         * @param content 消息内容
+         * @return 文件描述与缩略图；不是图片、视频时为 null
+         */
+        fun visualOf(content: MessageContent): Pair<FileInfo, ThumbnailInfo?>? = when (content) {
+            is MessageContent.Image -> content.file to content.thumbnail
+            is MessageContent.Video -> content.file to content.thumbnail
+            else -> null
+        }
+
+        /**
+         * 视频时长的显示："0:15"、"12:03"。
+         *
+         * @param context Context
+         * @param millis 时长（毫秒）
+         * @return 文字
+         */
+        fun durationText(context: Context, millis: Long): String {
+            val seconds = ((millis + 500) / 1000).toInt()
+            return context.getString(R.string.chat_video_duration, seconds / 60, seconds % 60)
         }
 
         /** 按 key 判断是否同一项 */

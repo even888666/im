@@ -38,11 +38,13 @@ import cn.android666.im.data.org.OrgRepository
 import cn.android666.im.testing.FakeClock
 import cn.android666.im.testing.FakeImageProcessor
 import cn.android666.im.testing.FakeUploader
+import cn.android666.im.testing.FakeVideoProcessor
 import cn.android666.im.testing.FakeVoicePlayer
 import cn.android666.im.testing.FakeVoiceRecorder
 import cn.android666.im.testing.FakeXmppClient
 import cn.android666.im.testing.MainDispatcherRule
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -103,6 +105,7 @@ class ChatViewModelMediaTest {
     fun tearDown() = holder.close()
 
     private val recorder = FakeVoiceRecorder()
+    private val videos = FakeVideoProcessor()
 
     /** 下载的文件目录 */
     private val filesRoot: File by lazy { temp.newFolder("files") }
@@ -120,7 +123,7 @@ class ChatViewModelMediaTest {
         val cacheDir = temp.newFolder()
         val media = MediaSender(
             client, holder, messages, uploader, images, workDir = { workDir }, cache = { MediaCache(cacheDir) },
-            scope = backgroundScope, io = mainDispatcherRule.testDispatcher,
+            scope = backgroundScope, io = mainDispatcherRule.testDispatcher, videos = videos,
         )
         val playback = VoicePlayback(
             player, FakeVoiceDownloader(), { MediaCache(cacheDir) }, holder, { false }, backgroundScope, mainDispatcherRule.testDispatcher,
@@ -397,6 +400,41 @@ class ChatViewModelMediaTest {
             runCurrent()
             assertThat(awaitItem()).isEqualTo(ChatEvent.Toast(R.string.chat_file_expired))
         }
+    }
+
+    /** 发送视频：处理期间有进度，完成后写入视频消息、进度清空、副本删除 */
+    @Test
+    fun sendVideo_progressThenMessage() = runTest(mainDispatcherRule.testDispatcher) {
+        val vm = newVm()
+        val seen = mutableListOf<Int?>()
+        val collector = backgroundScope.launch { vm.videoProgress.collect { seen += it } }
+
+        vm.sendVideo(Uri.parse("content://x/trip"))
+        runCurrent()
+
+        // StateFlow 会合并连续的更新（假处理器同步报告 30、100），至少能看到最后的进度
+        assertThat(seen).contains(100)
+        assertThat(vm.videoProgress.value).isNull()
+        val message = db.messageDao().last(BOB)!!
+        assertThat(message.type).isEqualTo("video")
+        val content = MessageJson.decodeContent(message.type, message.contentJson) as MessageContent.Video
+        assertThat(content.file.name).isEqualTo("trip.mp4")
+        assertThat(importer.copies.none { it.exists() }).isTrue()
+        collector.cancel()
+    }
+
+    /** 视频处理失败：提示 */
+    @Test
+    fun sendVideo_invalid_toast() = runTest(mainDispatcherRule.testDispatcher) {
+        videos.error = IOException("无法解码")
+        val vm = newVm()
+        vm.events.test {
+            vm.sendVideo(Uri.parse("content://x/trip"))
+            runCurrent()
+            assertThat(awaitItem()).isEqualTo(ChatEvent.Toast(R.string.chat_video_invalid))
+        }
+        assertThat(vm.videoProgress.value).isNull()
+        assertThat(db.messageDao().last(BOB)).isNull()
     }
 
     /** 假的下载：写入目标文件 */

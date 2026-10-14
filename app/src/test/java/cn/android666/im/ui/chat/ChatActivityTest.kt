@@ -18,6 +18,7 @@ import cn.android666.im.core.xmpp.extension.msg.ThumbnailInfo
 import cn.android666.im.data.conversation.ConversationKind
 import cn.android666.im.data.message.MessageJson
 import cn.android666.im.ui.media.ImagePreviewActivity
+import cn.android666.im.ui.media.VideoPlayerActivity
 import cn.android666.im.ui.profile.EmployeeProfileActivity
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
@@ -248,6 +249,39 @@ class ChatActivityTest {
                 card.performClick()
                 val started = shadowOf(activity).nextStartedActivity
                 assertThat(started.component!!.className).isEqualTo(EmployeeProfileActivity::class.java.name)
+            }
+        }
+    }
+
+    /** 5.7 收到的视频：显示封面、播放图标与时长，点击打开播放页 */
+    @Test
+    fun videoMessage_shownAndOpensPlayer() {
+        runBlocking {
+            val content = MessageContent.Video(
+                FileInfo("https://im.example.com/upload/v.mp4", "v.mp4", 100, "video/mp4", width = 1280, height = 720, duration = 15_400),
+                ThumbnailInfo("https://im.example.com/upload/v_thumb.jpg", 320, 180, "image/jpeg"),
+            )
+            app.container.userDatabaseHolder.require().messageDao().insert(
+                MessageEntity(
+                    msgId = "video", conversationId = BOB, senderJid = BOB, direction = MessageEntity.DIRECTION_IN, type = "video",
+                    body = "[视频]", contentJson = MessageJson.encodeContent(content), status = MessageEntity.STATUS_RECEIVED, serverTime = 1,
+                ),
+            )
+        }
+        val intent = ChatActivity.intent(app, BOB, ConversationKind.SINGLE)
+        ActivityScenario.launch<ChatActivity>(intent).use { scenario ->
+            lateinit var list: RecyclerView
+            scenario.onActivity { list = it.findViewById(R.id.list) }
+            waitUntil { list.findViewHolderForAdapterPosition(0)?.itemView?.findViewById<android.view.View>(R.id.imageBox)?.isVisible == true }
+            scenario.onActivity { activity ->
+                val item = list.findViewHolderForAdapterPosition(0)!!.itemView
+                assertThat(item.findViewById<TextView>(R.id.bubble).isVisible).isFalse()
+                assertThat(item.findViewById<android.view.View>(R.id.play).isVisible).isTrue()
+                assertThat(item.findViewById<TextView>(R.id.videoDuration).text.toString()).isEqualTo("0:15")
+                item.findViewById<android.view.View>(R.id.imageBox).performClick()
+                val started = shadowOf(activity).nextStartedActivity
+                assertThat(started.component!!.className).isEqualTo(VideoPlayerActivity::class.java.name)
+                assertThat(started.getStringExtra("url")).isEqualTo("https://im.example.com/upload/v.mp4")
             }
         }
     }

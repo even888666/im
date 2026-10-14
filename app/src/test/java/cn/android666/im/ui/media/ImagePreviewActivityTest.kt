@@ -33,7 +33,7 @@ class ImagePreviewActivityTest {
     fun localImage_readyAndSaveVisible() {
         val file = temp.newFile("a.jpg")
         file.outputStream().use { createBitmap(40, 30).apply { eraseColor(Color.RED) }.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-        val intent = ImagePreviewActivity.intent(app, PreviewImage("", "a.jpg", "image/jpeg", null, file.path, null))
+        val intent = ImagePreviewActivity.intent(app, PreviewMedia("", "a.jpg", "image/jpeg", null, file.path, null))
         ActivityScenario.launch<ImagePreviewActivity>(intent).use { scenario ->
             val deadline = System.currentTimeMillis() + 5_000
             var ready = false
@@ -50,7 +50,7 @@ class ImagePreviewActivityTest {
     /** 没有地址也没有本地文件：显示失败 */
     @Test
     fun nothing_failed() {
-        val intent = ImagePreviewActivity.intent(app, PreviewImage("", "a.jpg", "image/jpeg", null, null, null))
+        val intent = ImagePreviewActivity.intent(app, PreviewMedia("", "a.jpg", "image/jpeg", null, null, null))
         ActivityScenario.launch<ImagePreviewActivity>(intent).use { scenario ->
             shadowOf(Looper.getMainLooper()).idle()
             scenario.onActivity {

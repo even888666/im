@@ -31,6 +31,22 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
+        <!-- 视频处理进度（开发计划 5.7） -->
+        <TextView
+            android:id="@+id/videoProgress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_record_overlay"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="@android:color/white"
+            android:visibility="gone" />
+
         <!-- 录音浮层（开发计划 5.5） -->
         <include
             android:id="@+id/recordOverlay"

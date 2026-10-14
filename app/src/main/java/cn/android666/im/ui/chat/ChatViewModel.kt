@@ -577,6 +577,49 @@ class ChatViewModel(
         }
     }
 
+    private val videoProgressFlow = MutableStateFlow<Int?>(null)
+
+    /** 正在处理（压缩）视频的进度 0 ~ 100；没有在处理时为 null */
+    val videoProgress: StateFlow<Int?> = videoProgressFlow.asStateFlow()
+
+    /**
+     * 发送视频（开发计划 5.7）：导入、压缩（显示进度）后发送。离开聊天页会中断压缩（消息还没写入，不会留下半成品）。
+     *
+     * @param uri 视频地址
+     */
+    fun sendVideo(uri: Uri) {
+        val sender = media ?: return
+        val imports = importer ?: return
+        if (videoProgressFlow.value != null) return
+        viewModelScope.launch {
+            videoProgressFlow.value = 0
+            val imported = try {
+                imports.import(uri)
+            } catch (e: IOException) {
+                log.warn("视频导入失败：{}", e.toString())
+                videoProgressFlow.value = null
+                eventChannel.send(ChatEvent.Toast(R.string.chat_video_invalid))
+                return@launch
+            }
+            try {
+                sender.sendVideo(conversationId, kind.toEntityType(), imported.file, imported.displayName) { videoProgressFlow.value = it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: FileTooLargeException) {
+                eventChannel.send(ChatEvent.FileTooLarge(e.maxSize))
+            } catch (e: IOException) {
+                log.warn("视频处理失败：{}", e.toString())
+                eventChannel.send(ChatEvent.Toast(R.string.chat_video_invalid))
+            } catch (e: Exception) {
+                log.error("视频发送出错：会话={}", conversationId, e)
+                eventChannel.send(ChatEvent.Toast(R.string.chat_send_error))
+            } finally {
+                videoProgressFlow.value = null
+                imported.file.delete()
+            }
+        }
+    }
+
     /**
      * 名片中同事的显示信息：以本地组织架构为准（协议规范 §7.6），组织架构中没有时用名片中的姓名。
      *

@@ -67,14 +67,14 @@ class ChatAdapterTest {
         )
         fun media(thumb: String?, main: String?) = LocalMedia(thumb, main, MediaStatus.DONE, progress = 0)
 
-        assertThat(ChatAdapter.imageModel(msg(withUrls, media(localThumb.path, null)), withUrls)).isEqualTo(localThumb)
+        assertThat(ChatAdapter.imageModel(msg(withUrls, media(localThumb.path, null)), withUrls.file, withUrls.thumbnail)).isEqualTo(localThumb)
         // 本地缩略图被清理：用地址
-        assertThat(ChatAdapter.imageModel(msg(withUrls, media("/none/x.jpg", null)), withUrls)).isEqualTo("https://h/thumb.jpg")
-        assertThat(ChatAdapter.imageModel(msg(withUrls, null), withUrls)).isEqualTo("https://h/thumb.jpg")
+        assertThat(ChatAdapter.imageModel(msg(withUrls, media("/none/x.jpg", null)), withUrls.file, withUrls.thumbnail)).isEqualTo("https://h/thumb.jpg")
+        assertThat(ChatAdapter.imageModel(msg(withUrls, null), withUrls.file, withUrls.thumbnail)).isEqualTo("https://h/thumb.jpg")
         val noThumb = withUrls.copy(thumbnail = null)
-        assertThat(ChatAdapter.imageModel(msg(noThumb, null), noThumb)).isEqualTo("https://h/main.jpg")
-        assertThat(ChatAdapter.imageModel(msg(noUrls, media(null, localMain.path)), noUrls)).isEqualTo(localMain)
-        assertThat(ChatAdapter.imageModel(msg(noUrls, null), noUrls)).isNull()
+        assertThat(ChatAdapter.imageModel(msg(noThumb, null), noThumb.file, noThumb.thumbnail)).isEqualTo("https://h/main.jpg")
+        assertThat(ChatAdapter.imageModel(msg(noUrls, media(null, localMain.path)), noUrls.file, noUrls.thumbnail)).isEqualTo(localMain)
+        assertThat(ChatAdapter.imageModel(msg(noUrls, null), noUrls.file, noUrls.thumbnail)).isNull()
         localThumb.delete()
         localMain.delete()
     }

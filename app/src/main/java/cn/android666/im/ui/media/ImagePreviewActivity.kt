@@ -32,8 +32,8 @@ class ImagePreviewActivity : AppCompatActivity() {
 
     private val viewModel by appViewModels { container ->
         val saver = GallerySaver(applicationContext, getString(R.string.app_name))
-        ImagePreviewViewModel(
-            image = PreviewImage(
+        MediaPreviewViewModel(
+            image = PreviewMedia(
                 url = intent.getStringExtra(EXTRA_URL).orEmpty(),
                 name = intent.getStringExtra(EXTRA_NAME) ?: DEFAULT_NAME,
                 mime = intent.getStringExtra(EXTRA_MIME) ?: DEFAULT_MIME,
@@ -136,7 +136,7 @@ class ImagePreviewActivity : AppCompatActivity() {
          * @param image 要预览的图片
          * @return Intent
          */
-        fun intent(context: Context, image: PreviewImage): Intent = Intent(context, ImagePreviewActivity::class.java)
+        fun intent(context: Context, image: PreviewMedia): Intent = Intent(context, ImagePreviewActivity::class.java)
             .putExtra(EXTRA_URL, image.url)
             .putExtra(EXTRA_NAME, image.name)
             .putExtra(EXTRA_MIME, image.mime)
